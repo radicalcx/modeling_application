@@ -7,7 +7,7 @@ from numpy.random import exponential, rand
 import pandas as pd
 
 
-class interaction:
+class Interaction:
     def __init__(self, inp_arg, out_arg):
         self.inp = np.array(inp_arg)
         self.out = np.array(out_arg)
@@ -27,7 +27,7 @@ class interaction:
             return self.out[num]
 
 
-def create_trajectory(inter: typing.List[interaction], init_val, lam, time, m):
+def create_trajectory(inter: typing.List[Interaction], init_val, lam, time, m):
     trajectory = np.array([init_val])
     time_array = np.zeros(1)
     while time_array[-1] < time:
@@ -183,7 +183,7 @@ def main():
             if interactions is not None:
                 interactions = None
 
-            interactions = [(interaction(
+            interactions = [(Interaction(
                 inp_arg=np.array([int(ent_inp_values[i][j].get()) for j in range(n)]),
                 out_arg=np.array(
                     [[int(ent_out_values[i][k][j].get()) for j in range(n)] for k in range(len(ent_out_values[i]))])
