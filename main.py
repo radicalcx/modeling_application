@@ -2,16 +2,18 @@ import tkinter as tk
 import typing
 from functools import partial
 import numpy as np
+import sympy as sp
 import numpy.typing
 from numpy.random import exponential, rand
 import pandas as pd
+from scipy.integrate import odeint
 
 
 class Interaction:
     def __init__(self, inp_arg, out_arg):
         self.inp = np.array(inp_arg)
         self.out = np.array(out_arg)
-        self.prob = None
+        self.prob = [1, ]
 
     def add_probabilities(self, prob_arg: numpy.typing.NDArray):
         self.prob = np.array([prob_arg[0]])
@@ -19,7 +21,7 @@ class Interaction:
             self.prob = np.append(self.prob, self.prob[-1] + el)
 
     def choose_out(self):
-        if self.prob is None:
+        if self.prob == [1, ]:
             return self.out[0]
         else:
             coin = rand()
@@ -37,7 +39,7 @@ def create_trajectory(inter: typing.List[Interaction], init_val, lam, time, m):
         for num, t in tau.items():
             if np.greater_equal(trajectory[-1], inter[num].inp).all():
                 trajectory = np.append(trajectory, [trajectory[-1] - inter[num].inp + inter[num].choose_out()], axis=0)
-                time_array = np.append(time_array, time_array[-1]+t)
+                time_array = np.append(time_array, time_array[-1] + t)
                 break
         else:
             trajectory = np.append(trajectory, [trajectory[-1]], axis=0)
@@ -46,6 +48,42 @@ def create_trajectory(inter: typing.List[Interaction], init_val, lam, time, m):
     trajectory[-1] = trajectory[-2]
     time_array[-1] = time
     return trajectory, time_array
+
+
+def calculate_math_expectation(inter: typing.List[Interaction], init_val, lam, time, n, m):
+    s = [sp.Symbol('s' + str(i)) for i in range(n)]
+    arg_for_subs = [(s[i], 1) for i in range(n)]
+    components = [sum(
+        [sp.prod(
+            [s[j] ** inter[i].out[k][j] * inter[i].prob[k] for j in range(n)]) for k in range(len(inter[i].out))]) -
+                  sp.prod(
+                      [s[j] ** inter[i].inp[j] for j in range(n)]) for i in range(m)]
+
+    derivatives = [np.copy(inter[i].inp) for i in range(m)]
+
+    diff_components = [[sp.diff(components[i], s[j]) for j in range(n)] for i in range(m)]
+    diff_derivatives = [derivatives for i in range(n)]
+
+    for i in range(n):
+        for j in range(m):
+            diff_derivatives[i][j][i] += 1
+
+    components = [components[i].subs(arg_for_subs) for i in range(m)]
+    diff_components = [[diff_components[i][j].subs(arg_for_subs) for j in range(n)] for i in range(m)]
+
+    def system(x, t, lamb):
+        res = [sum([
+                       lamb[i] * (
+                               diff_components[i][j] *
+                               np.prod([x[k] * derivatives[i][k] for k in range(n)])
+                               +
+                               components[i] *
+                               np.prod([x[k] * diff_derivatives[j][i][k] for k in range(n)])
+                       )
+                   for i in range(m)]) for j in range(n)]
+        return res
+
+    return odeint(system, init_val, np.linspace(0, time, time), args=(lam, ))
 
 
 def main():
@@ -250,8 +288,10 @@ def main():
                     for num, arr in probabilities.items():
                         interactions[num].add_probabilities(arr)
 
-                tr, t = create_trajectory(interactions, init_values, lam, time, m)
-                print(tr, t)
+                # tr, t = create_trajectory(interactions, init_values, lam, time, m)
+                # print(tr, t)
+                print(
+                    calculate_math_expectation(inter=interactions, init_val=init_values, lam=lam, time=time, n=n, m=m))
 
             tk.Button(frm_params, text='Рассчитать', command=init_params).pack(side=tk.TOP)
 
