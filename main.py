@@ -13,19 +13,21 @@ class Interaction:
     def __init__(self, inp_arg, out_arg):
         self.inp = np.array(inp_arg)
         self.out = np.array(out_arg)
+        self.prob_intervals = [1, ]
         self.prob = [1, ]
 
     def add_probabilities(self, prob_arg: numpy.typing.NDArray):
-        self.prob = np.array([prob_arg[0]])
+        self.prob = prob_arg
+        self.prob_intervals = np.array([prob_arg[0]])
         for el in prob_arg[1:]:
-            self.prob = np.append(self.prob, self.prob[-1] + el)
+            self.prob_intervals = np.append(self.prob_intervals, self.prob_intervals[-1] + el)
 
     def choose_out(self):
-        if self.prob == [1, ]:
+        if self.prob_intervals == [1, ]:
             return self.out[0]
         else:
             coin = rand()
-            num = (coin < self.prob).argmax()
+            num = (coin < self.prob_intervals).argmax()
             return self.out[num]
 
 
@@ -55,14 +57,13 @@ def calculate_math_expectation(inter: typing.List[Interaction], init_val, lam, t
     arg_for_subs = [(s[i], 1) for i in range(n)]
     components = [sum(
         [sp.prod(
-            [s[j] ** inter[i].out[k][j] * inter[i].prob[k] for j in range(n)]) for k in range(len(inter[i].out))]) -
+            [s[j] ** inter[i].out[k][j] for j in range(n)]) * inter[i].prob[k] for k in range(len(inter[i].out))]) -
                   sp.prod(
                       [s[j] ** inter[i].inp[j] for j in range(n)]) for i in range(m)]
-
-    derivatives = [np.copy(inter[i].inp) for i in range(m)]
+    derivatives = [inter[i].inp.copy() for i in range(m)]
 
     diff_components = [[sp.diff(components[i], s[j]) for j in range(n)] for i in range(m)]
-    diff_derivatives = [derivatives for i in range(n)]
+    diff_derivatives = [[derivatives[j].copy() for j in range(m)] for i in range(n)]
 
     for i in range(n):
         for j in range(m):
@@ -75,10 +76,10 @@ def calculate_math_expectation(inter: typing.List[Interaction], init_val, lam, t
         res = [sum([
                        lamb[i] * (
                                diff_components[i][j] *
-                               np.prod([x[k] * derivatives[i][k] for k in range(n)])
+                               np.prod([x[k] ** derivatives[i][k] for k in range(n)])
                                +
                                components[i] *
-                               np.prod([x[k] * diff_derivatives[j][i][k] for k in range(n)])
+                               np.prod([x[k] ** diff_derivatives[j][i][k] for k in range(n)])
                        )
                    for i in range(m)]) for j in range(n)]
         return res
@@ -226,9 +227,6 @@ def main():
                 out_arg=np.array(
                     [[int(ent_out_values[i][k][j].get()) for j in range(n)] for k in range(len(ent_out_values[i]))])
             )) for i in range(m)]
-
-            for inter in interactions:
-                print(inter.inp, inter.out)
 
             if frm_params is not None:
                 frm_params.destroy()
