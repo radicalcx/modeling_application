@@ -122,6 +122,7 @@ def main():
     interactions = None
     probabilities = None
     time = None
+    count = None
     init_values = None
     lam = None
 
@@ -238,12 +239,14 @@ def main():
             frm_lam = tk.Frame(frm_params, padx=15, pady=10)
             frm_prob = {key: tk.Frame(frm_params, padx=15, pady=10) for key in interactions_with_prob}
             frm_time = tk.Frame(frm_params, padx=15, pady=10)
+            frm_count = tk.Frame(frm_params, padx=15, pady=10)
 
             frm_init_values.pack()
             frm_lam.pack()
             for el in frm_prob.values():
                 el.pack()
             frm_time.pack()
+            frm_count.pack()
 
             ent_init_values = [tk.Entry(frm_init_values, width=8) for i in range(n)]
             ent_lam = [tk.Entry(frm_lam, width=8) for i in range(m)]
@@ -264,12 +267,16 @@ def main():
                     el.pack(side=tk.LEFT)
 
             ent_time = tk.Entry(frm_time, width=4)
+            ent_count = tk.Entry(frm_count, width=4)
 
             tk.Label(frm_time, text='T=').pack(side=tk.LEFT)
             ent_time.pack(side=tk.LEFT)
 
+            tk.Label(frm_count, text='N=').pack(side=tk.LEFT)
+            ent_count.pack(side=tk.LEFT)
+
             def init_params():
-                nonlocal time, probabilities, lam, init_values
+                nonlocal time, probabilities, lam, init_values, count
 
                 try:
                     init_values = np.array([int(ent_init_values[i].get()) for i in range(n)])
@@ -277,6 +284,7 @@ def main():
                     time = int(ent_time.get())
                     probabilities = {num: np.array(list(map(lambda x: float(x.get()), values))) for num, values in
                                      ent_prob.items()}
+                    count = int(ent_count.get())
                 except Exception as ex:
                     print(ex)
 
@@ -286,8 +294,8 @@ def main():
                     for num, arr in probabilities.items():
                         interactions[num].add_probabilities(arr)
 
-                # tr, t = create_trajectory(interactions, init_values, lam, time, m)
-                # print(tr, t)
+
+
                 print(
                     calculate_math_expectation(inter=interactions, init_val=init_values, lam=lam, time=time, n=n, m=m))
 
