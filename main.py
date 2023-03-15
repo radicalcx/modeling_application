@@ -7,6 +7,55 @@ import numpy.typing
 from numpy.random import exponential, rand
 import pandas as pd
 from scipy.integrate import odeint
+from matplotlib.figure import Figure
+from matplotlib.backends.backend_tkagg import (FigureCanvasTkAgg, NavigationToolbar2Tk)
+
+
+class VerticalScrolledFrame(tk.LabelFrame):
+    """A pure Tkinter scrollable frame that actually works!
+    * Use the 'interior' attribute to place widgets inside the scrollable frame.
+    * Construct and pack/place/grid normally.
+    * This frame only allows vertical scrolling.
+    """
+
+    def __init__(self, parent, *args, **kw):
+        tk.LabelFrame.__init__(self, parent, *args, **kw)
+
+        # Create a canvas object and a vertical scrollbar for scrolling it.
+        vscrollbar = tk.Scrollbar(self, orient=tk.VERTICAL)
+        vscrollbar.pack(fill=tk.Y, side=tk.RIGHT, expand=tk.FALSE)
+        canvas = tk.Canvas(self, bd=0, highlightthickness=0,
+                           yscrollcommand=vscrollbar.set, height=200)
+        canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=tk.TRUE)
+        vscrollbar.config(command=canvas.yview)
+
+        # Reset the view
+        canvas.xview_moveto(0)
+        canvas.yview_moveto(0)
+
+        # Create a frame inside the canvas which will be scrolled with it.
+        self.interior = interior = tk.Frame(canvas)
+        interior_id = canvas.create_window(0, 0, window=interior,
+                                           anchor=tk.NW)
+
+        # Track changes to the canvas and frame width and sync them,
+        # also updating the scrollbar.
+        def _configure_interior(event):
+            # Update the scrollbars to match the size of the inner frame.
+            size = (interior.winfo_reqwidth(), interior.winfo_reqheight())
+            canvas.config(scrollregion="0 0 %s %s" % size)
+            if interior.winfo_reqwidth() != canvas.winfo_width():
+                # Update the canvas's width to fit the inner frame.
+                canvas.config(width=interior.winfo_reqwidth())
+
+        interior.bind('<Configure>', _configure_interior)
+
+        def _configure_canvas(event):
+            if interior.winfo_reqwidth() != canvas.winfo_width():
+                # Update the inner frame's width to fill the canvas.
+                canvas.itemconfigure(interior_id, width=canvas.winfo_width())
+
+        # canvas.bind('<Configure>', _configure_canvas)
 
 
 class Interaction:
@@ -23,7 +72,7 @@ class Interaction:
             self.prob_intervals = np.append(self.prob_intervals, self.prob_intervals[-1] + el)
 
     def choose_out(self):
-        if self.prob_intervals == [1, ]:
+        if len(self.prob_intervals) == 1:
             return self.out[0]
         else:
             coin = rand()
@@ -74,25 +123,27 @@ def calculate_math_expectation(inter: typing.List[Interaction], init_val, lam, t
 
     def system(x, t, lamb):
         res = [sum([
-                       lamb[i] * (
-                               diff_components[i][j] *
-                               np.prod([x[k] ** derivatives[i][k] for k in range(n)])
-                               +
-                               components[i] *
-                               np.prod([x[k] ** diff_derivatives[j][i][k] for k in range(n)])
-                       )
-                   for i in range(m)]) for j in range(n)]
+            lamb[i] * (
+                    diff_components[i][j] *
+                    np.prod([x[k] ** derivatives[i][k] for k in range(n)])
+                    +
+                    components[i] *
+                    np.prod([x[k] ** diff_derivatives[j][i][k] for k in range(n)])
+            )
+            for i in range(m)]) for j in range(n)]
         return res
 
-    return odeint(system, init_val, np.linspace(0, time, time), args=(lam, ))
+    return odeint(system, init_val, np.linspace(0, time, time), args=(lam,))
 
 
 def main():
     frm_main = tk.Tk()
     frm_main.title('modeling_application')
+    frm_main.grid_columnconfigure(0, weight=1)
+    frm_main.grid_columnconfigure(1, weight=8)
 
     frm_sizes = tk.LabelFrame(frm_main, text='Размерности системы', padx=15, pady=10)
-    frm_sizes.grid(row=0, column=0, padx=15, pady=15)
+    frm_sizes.grid(row=0, column=0, padx=15, pady=1, sticky=tk.NSEW)
 
     lbl_n = tk.Label(frm_sizes, text='Количество типов элементов')
     lbl_m = tk.Label(frm_sizes, text='Количество комплексов взаимодействия')
@@ -106,35 +157,6 @@ def main():
     lbl_m.grid(row=1, column=0, padx=15, pady=5)
     ent_m.grid(row=1, column=1, padx=15, pady=5)
 
-    frm_complexes = None
-    frm_complex_rows = None
-    frm_out = None
-    frm_out_text = None
-    frm_inp_text = None
-    frm_inp_btn = None
-
-    ent_inp_values = None
-    ent_out_values = None
-
-    btn_add_complex = None
-    btn_apply_complexes = None
-
-    interactions = None
-    probabilities = None
-    time = None
-    count = None
-    init_values = None
-    lam = None
-
-    interactions_with_prob = {}
-
-    frm_params = None
-
-    ent_init_values = None
-    ent_lam = None
-    ent_prob = None
-    ent_time = None
-
     def init_frm_complexes(n_str, m_str):
         try:
             n = int(n_str)
@@ -142,30 +164,26 @@ def main():
         except Exception as ex:
             return
 
-        nonlocal frm_complexes, frm_complex_rows
-        nonlocal frm_out, frm_out_text
-        nonlocal frm_inp_text, frm_inp_btn
-        nonlocal interactions_with_prob
-        if frm_complexes is not None:
-            frm_complexes.destroy()
-            interactions_with_prob.clear()
+        interactions_with_prob = {}
 
-        frm_complexes = tk.LabelFrame(frm_main, padx=15, pady=10, text='Комплексы взаимодействия')
-        frm_complex_rows = [tk.Frame(frm_complexes, padx=3, pady=0) for i in range(m)]
+        frm_complexes_base = tk.LabelFrame(frm_main, padx=15, pady=10, text='Комплексы взаимодействия')
+        frm_complexes = VerticalScrolledFrame(frm_complexes_base, padx=15, pady=10)
+        frm_complex_rows = [tk.Frame(frm_complexes.interior, padx=3, pady=0) for i in range(m)]
         frm_out = [tk.Frame(frm_complex_rows[i], padx=15, pady=5) for i in range(m)]
         frm_out_text = [[tk.Frame(frm_out[i], padx=0, pady=0), ] for i in range(m)]
         frm_inp_text = [tk.Frame(frm_complex_rows[i], padx=15, pady=5) for i in range(m)]
         frm_inp_btn = [tk.Frame(frm_complex_rows[i], padx=15, pady=5) for i in range(m)]
 
-        frm_complexes.grid(row=1, column=0, padx=15, pady=15)
+        frm_complexes_base.grid(row=1, column=0, padx=15, pady=1, sticky=tk.NSEW)
+        frm_complexes.pack()
         for i in range(m):
             frm_complex_rows[i].pack(padx=15, pady=5)
-            frm_inp_text[i].grid(row=0, column=0, padx=0)
-            frm_inp_btn[i].grid(row=1, column=0, padx=0)
-            frm_out[i].grid(row=0, column=1, padx=0)
-            frm_out_text[i][0].pack(side=tk.TOP, padx=0, pady=0)
+            frm_inp_text[i].grid(row=0, column=0, padx=0, sticky=tk.NSEW)
+            frm_inp_btn[i].grid(row=1, column=0, padx=0, sticky=tk.NSEW)
+            frm_out[i].grid(row=0, column=1, padx=0, sticky=tk.NSEW)
+            frm_out_text[i][0].pack(side=tk.TOP, padx=0, pady=0, expand=True)
 
-        nonlocal ent_inp_values, ent_out_values
+        # nonlocal ent_inp_values, ent_out_values
         ent_inp_values = [[tk.Entry(frm_inp_text[i], width=1) for j in range(n)] for i in range(m)]
         ent_out_values = [[[tk.Entry(frm_out_text[i][0], width=1) for j in range(n)], ] for i in range(m)]
 
@@ -207,21 +225,12 @@ def main():
 
             interactions_with_prob[idx] = interactions_with_prob.setdefault(idx, 1) + 1
 
-        nonlocal btn_add_complex
         btn_add_complex = [tk.Button(frm_inp_btn[i], text='Добавить', command=partial(add_complex, i)) for i in
                            range(m)]
         for i in range(m):
             btn_add_complex[i].pack(side=tk.TOP)
 
         def init_interactions():
-            nonlocal ent_inp_values
-            nonlocal interactions
-            nonlocal frm_params
-            nonlocal ent_lam, ent_init_values, ent_prob
-            nonlocal ent_time
-
-            if interactions is not None:
-                interactions = None
 
             interactions = [(Interaction(
                 inp_arg=np.array([int(ent_inp_values[i][j].get()) for j in range(n)]),
@@ -229,17 +238,18 @@ def main():
                     [[int(ent_out_values[i][k][j].get()) for j in range(n)] for k in range(len(ent_out_values[i]))])
             )) for i in range(m)]
 
-            if frm_params is not None:
-                frm_params.destroy()
 
-            frm_params = tk.LabelFrame(frm_main, text='Параметры системы')
-            frm_params.grid(row=1, column=1)
+            frm_params_base = tk.LabelFrame(frm_main, text='Параметры системы', pady=0)
+            frm_params_base.grid(row=2, column=0, sticky=tk.NSEW)
 
-            frm_init_values = tk.Frame(frm_params, padx=15, pady=10)
-            frm_lam = tk.Frame(frm_params, padx=15, pady=10)
-            frm_prob = {key: tk.Frame(frm_params, padx=15, pady=10) for key in interactions_with_prob}
-            frm_time = tk.Frame(frm_params, padx=15, pady=10)
-            frm_count = tk.Frame(frm_params, padx=15, pady=10)
+            frm_params = VerticalScrolledFrame(frm_params_base)
+            frm_params.pack(side=tk.TOP, expand=True, pady=1)
+
+            frm_init_values = tk.Frame(frm_params.interior, padx=15, pady=10)
+            frm_lam = tk.Frame(frm_params.interior, padx=15, pady=10)
+            frm_prob = {key: tk.Frame(frm_params.interior, padx=15, pady=10) for key in interactions_with_prob}
+            frm_time = tk.Frame(frm_params.interior, padx=15, pady=10)
+            frm_count = tk.Frame(frm_params.interior, padx=15, pady=10)
 
             frm_init_values.pack()
             frm_lam.pack()
@@ -276,7 +286,7 @@ def main():
             ent_count.pack(side=tk.LEFT)
 
             def init_params():
-                nonlocal time, probabilities, lam, init_values, count
+                # nonlocal time, probabilities, lam, init_values, count
 
                 try:
                     init_values = np.array([int(ent_init_values[i].get()) for i in range(n)])
@@ -294,21 +304,35 @@ def main():
                     for num, arr in probabilities.items():
                         interactions[num].add_probabilities(arr)
 
+                fig = Figure(figsize=(5, 5),
+                             dpi=100)
+                tr, t_a = create_trajectory(interactions, init_values, lam, time, m)
 
+                plot1 = fig.add_subplot()
+                plot1.plot(t_a, tr[:, 0])
+                canvas = FigureCanvasTkAgg(fig,
+                                           master=frm_main)
+                canvas.draw()
+                canvas.get_tk_widget().grid(row=0, column=1, rowspan=3, sticky=tk.NSEW,)
 
-                print(
-                    calculate_math_expectation(inter=interactions, init_val=init_values, lam=lam, time=time, n=n, m=m))
+                toolbar = NavigationToolbar2Tk(canvas, frm_main)
+                toolbar.update()
 
-            tk.Button(frm_params, text='Рассчитать', command=init_params).pack(side=tk.TOP)
+                canvas.get_tk_widget().grid(row=0, column=1, rowspan=3, sticky=tk.NSEW)
+                # print(
+                #     calculate_math_expectation(inter=interactions, init_val=init_values, lam=lam, time=time, n=n, m=m))
 
-        nonlocal btn_apply_complexes
-        btn_apply_complexes = tk.Button(frm_complexes, text='Применить', command=init_interactions)
+            tk.Button(frm_params_base, text='Рассчитать', command=init_params).pack(side=tk.TOP, pady=1)
+
+        frm_btn_apply_complexes = tk.Frame(frm_complexes_base, padx=15, pady=10)
+        frm_btn_apply_complexes.pack()
+        btn_apply_complexes = tk.Button(frm_btn_apply_complexes, text='Применить', command=init_interactions)
         btn_apply_complexes.pack()
 
-    btn_apply_params = tk.Button(frm_sizes, text='Применить',
-                                 command=lambda: init_frm_complexes(ent_n.get(), ent_m.get()))
+    btn_apply_sizes = tk.Button(frm_sizes, text='Применить',
+                                command=lambda: init_frm_complexes(ent_n.get(), ent_m.get()))
 
-    btn_apply_params.grid(row=2, column=1, columnspan=2)
+    btn_apply_sizes.grid(row=2, column=1, columnspan=2)
 
     frm_main.mainloop()
 
