@@ -1,4 +1,5 @@
-import tkinter as tk
+import customtkinter as tk
+# import tkinter as tk
 import typing
 from functools import partial
 import numpy as np
@@ -10,52 +11,54 @@ from scipy.integrate import odeint
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import (FigureCanvasTkAgg, NavigationToolbar2Tk)
 
+tk.set_appearance_mode("Dark")  # Modes: "System" (standard), "Dark", "Light"
+tk.set_default_color_theme("green")  # Themes: "blue" (standard), "green", "dark-blue"
 
-class VerticalScrolledFrame(tk.LabelFrame):
-    """A pure Tkinter scrollable frame that actually works!
-    * Use the 'interior' attribute to place widgets inside the scrollable frame.
-    * Construct and pack/place/grid normally.
-    * This frame only allows vertical scrolling.
-    """
-
-    def __init__(self, parent, *args, **kw):
-        tk.LabelFrame.__init__(self, parent, *args, **kw)
-
-        # Create a canvas object and a vertical scrollbar for scrolling it.
-        vscrollbar = tk.Scrollbar(self, orient=tk.VERTICAL)
-        vscrollbar.pack(fill=tk.Y, side=tk.RIGHT, expand=tk.FALSE)
-        canvas = tk.Canvas(self, bd=0, highlightthickness=0,
-                           yscrollcommand=vscrollbar.set, height=200)
-        canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=tk.TRUE)
-        vscrollbar.config(command=canvas.yview)
-
-        # Reset the view
-        canvas.xview_moveto(0)
-        canvas.yview_moveto(0)
-
-        # Create a frame inside the canvas which will be scrolled with it.
-        self.interior = interior = tk.Frame(canvas)
-        interior_id = canvas.create_window(0, 0, window=interior,
-                                           anchor=tk.NW)
-
-        # Track changes to the canvas and frame width and sync them,
-        # also updating the scrollbar.
-        def _configure_interior(event):
-            # Update the scrollbars to match the size of the inner frame.
-            size = (interior.winfo_reqwidth(), interior.winfo_reqheight())
-            canvas.config(scrollregion="0 0 %s %s" % size)
-            if interior.winfo_reqwidth() != canvas.winfo_width():
-                # Update the canvas's width to fit the inner frame.
-                canvas.config(width=interior.winfo_reqwidth())
-
-        interior.bind('<Configure>', _configure_interior)
-
-        def _configure_canvas(event):
-            if interior.winfo_reqwidth() != canvas.winfo_width():
-                # Update the inner frame's width to fill the canvas.
-                canvas.itemconfigure(interior_id, width=canvas.winfo_width())
-
-        # canvas.bind('<Configure>', _configure_canvas)
+# class VerticalScrolledFrame(tk.LabelFrame):
+#     """A pure Tkinter scrollable frame that actually works!
+#     * Use the 'interior' attribute to place widgets inside the scrollable frame.
+#     * Construct and pack/place/grid normally.
+#     * This frame only allows vertical scrolling.
+#     """
+#
+#     def __init__(self, parent, *args, **kw):
+#         tk.LabelFrame.__init__(self, parent, *args, **kw)
+#
+#         # Create a canvas object and a vertical scrollbar for scrolling it.
+#         vscrollbar = tk.Scrollbar(self, orient=tk.VERTICAL)
+#         vscrollbar.pack(fill=tk.Y, side=tk.RIGHT, expand=tk.FALSE)
+#         canvas = tk.Canvas(self, bd=0, highlightthickness=0,
+#                            yscrollcommand=vscrollbar.set, height=200)
+#         canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=tk.TRUE)
+#         vscrollbar.config(command=canvas.yview)
+#
+#         # Reset the view
+#         canvas.xview_moveto(0)
+#         canvas.yview_moveto(0)
+#
+#         # Create a frame inside the canvas which will be scrolled with it.
+#         self.interior = interior = tk.Frame(canvas)
+#         interior_id = canvas.create_window(0, 0, window=interior,
+#                                            anchor=tk.NW)
+#
+#         # Track changes to the canvas and frame width and sync them,
+#         # also updating the scrollbar.
+#         def _configure_interior(event):
+#             # Update the scrollbars to match the size of the inner frame.
+#             size = (interior.winfo_reqwidth(), interior.winfo_reqheight())
+#             canvas.config(scrollregion="0 0 %s %s" % size)
+#             if interior.winfo_reqwidth() != canvas.winfo_width():
+#                 # Update the canvas's width to fit the inner frame.
+#                 canvas.config(width=interior.winfo_reqwidth())
+#
+#         interior.bind('<Configure>', _configure_interior)
+#
+#         def _configure_canvas(event):
+#             if interior.winfo_reqwidth() != canvas.winfo_width():
+#                 # Update the inner frame's width to fill the canvas.
+#                 canvas.itemconfigure(interior_id, width=canvas.winfo_width())
+#
+#         # canvas.bind('<Configure>', _configure_canvas)
 
 
 class Interaction:
@@ -137,19 +140,20 @@ def calculate_math_expectation(inter: typing.List[Interaction], init_val, lam, t
 
 
 def main():
-    frm_main = tk.Tk()
+    frm_main = tk.CTk()
     frm_main.title('modeling_application')
     frm_main.grid_columnconfigure(0, weight=1)
     frm_main.grid_columnconfigure(1, weight=8)
+    frm_main.grid_rowconfigure((0, 1 ,2), weight=1)
 
-    frm_sizes = tk.LabelFrame(frm_main, text='Размерности системы', padx=15, pady=10)
+    frm_sizes = tk.CTkFrame(frm_main)
     frm_sizes.grid(row=0, column=0, padx=15, pady=1, sticky=tk.NSEW)
 
-    lbl_n = tk.Label(frm_sizes, text='Количество типов элементов')
-    lbl_m = tk.Label(frm_sizes, text='Количество комплексов взаимодействия')
+    lbl_n = tk.CTkLabel(frm_sizes, text='Количество типов элементов')
+    lbl_m = tk.CTkLabel(frm_sizes, text='Количество комплексов взаимодействия')
 
-    ent_n = tk.Entry(frm_sizes, width=2)
-    ent_m = tk.Entry(frm_sizes, width=2)
+    ent_n = tk.CTkEntry(frm_sizes, width=2)
+    ent_m = tk.CTkEntry(frm_sizes, width=2)
 
     lbl_n.grid(row=0, column=0, padx=15, pady=5)
     ent_n.grid(row=0, column=1, padx=15, pady=5)
@@ -166,13 +170,14 @@ def main():
 
         interactions_with_prob = {}
 
-        frm_complexes_base = tk.LabelFrame(frm_main, padx=15, pady=10, text='Комплексы взаимодействия')
-        frm_complexes = VerticalScrolledFrame(frm_complexes_base, padx=15, pady=10)
-        frm_complex_rows = [tk.Frame(frm_complexes.interior, padx=3, pady=0) for i in range(m)]
-        frm_out = [tk.Frame(frm_complex_rows[i], padx=15, pady=5) for i in range(m)]
-        frm_out_text = [[tk.Frame(frm_out[i], padx=0, pady=0), ] for i in range(m)]
-        frm_inp_text = [tk.Frame(frm_complex_rows[i], padx=15, pady=5) for i in range(m)]
-        frm_inp_btn = [tk.Frame(frm_complex_rows[i], padx=15, pady=5) for i in range(m)]
+        frm_complexes_base = tk.CTkFrame(frm_main)
+        # frm_complexes = VerticalScrolledFrame(frm_complexes_base, padx=15, pady=10)
+        frm_complexes = tk.CTkScrollableFrame(frm_complexes_base, width=500)
+        frm_complex_rows = [tk.CTkFrame(frm_complexes) for i in range(m)]
+        frm_out = [tk.CTkFrame(frm_complex_rows[i]) for i in range(m)]
+        frm_out_text = [[tk.CTkFrame(frm_out[i]), ] for i in range(m)]
+        frm_inp_text = [tk.CTkFrame(frm_complex_rows[i]) for i in range(m)]
+        frm_inp_btn = [tk.CTkFrame(frm_complex_rows[i]) for i in range(m)]
 
         frm_complexes_base.grid(row=1, column=0, padx=15, pady=1, sticky=tk.NSEW)
         frm_complexes.pack()
@@ -184,48 +189,47 @@ def main():
             frm_out_text[i][0].pack(side=tk.TOP, padx=0, pady=0, expand=True)
 
         # nonlocal ent_inp_values, ent_out_values
-        ent_inp_values = [[tk.Entry(frm_inp_text[i], width=1) for j in range(n)] for i in range(m)]
-        ent_out_values = [[[tk.Entry(frm_out_text[i][0], width=1) for j in range(n)], ] for i in range(m)]
-
+        ent_inp_values = [[tk.CTkEntry(frm_inp_text[i], width=1) for j in range(n)] for i in range(m)]
+        ent_out_values = [[[tk.CTkEntry(frm_out_text[i][0], width=1) for j in range(n)], ] for i in range(m)]
         px = 0
         py = 3
         for i in range(m):
             for j in range(n - 1):
                 ent_inp_values[i][j].pack(side=tk.LEFT, padx=px, pady=py)
                 ent_inp_values[i][j].insert(0, '0')
-                tk.Label(frm_inp_text[i], text='T' + str(j + 1) + '+').pack(side=tk.LEFT, padx=px, pady=py)
+                tk.CTkLabel(frm_inp_text[i], text='T' + str(j + 1) + '+').pack(side=tk.LEFT, padx=px, pady=py)
             ent_inp_values[i][n - 1].pack(side=tk.LEFT, padx=px, pady=py)
             ent_inp_values[i][n - 1].insert(0, '0')
-            tk.Label(frm_inp_text[i], text='T' + str(n) + ' \N{RIGHTWARDS BLACK ARROW}').pack(side=tk.LEFT, padx=px,
-                                                                                              pady=py)
+            tk.CTkLabel(frm_inp_text[i], text='T' + str(n) + ' \N{RIGHTWARDS BLACK ARROW}').pack(side=tk.LEFT, padx=px,
+                                                                                                 pady=py)
 
         for i in range(m):
             for j in range(n - 1):
                 ent_out_values[i][0][j].pack(side=tk.LEFT, padx=px, pady=py)
                 ent_out_values[i][0][j].insert(0, '0')
-                tk.Label(frm_out_text[i][0], text='T' + str(j + 1) + '+').pack(side=tk.LEFT, padx=px, pady=py)
+                tk.CTkLabel(frm_out_text[i][0], text='T' + str(j + 1) + '+').pack(side=tk.LEFT, padx=px, pady=py)
             ent_out_values[i][0][n - 1].pack(side=tk.LEFT, padx=px, pady=py)
             ent_out_values[i][0][n - 1].insert(0, '0')
-            tk.Label(frm_out_text[i][0], text='T' + str(n)).pack(side=tk.LEFT, padx=px, pady=py)
+            tk.CTkLabel(frm_out_text[i][0], text='T' + str(n)).pack(side=tk.LEFT, padx=px, pady=py)
 
         # nonlocal interactions_with_prob
 
         def add_complex(idx):
-            frm_out_text[idx].append(tk.Frame(frm_out[idx], padx=15, pady=5))
+            frm_out_text[idx].append(tk.CTkFrame(frm_out[idx]))
             frm_out_text[idx][-1].pack()
 
-            ent_out_values[idx].append([tk.Entry(frm_out_text[idx][-1], width=1) for j in range(n)])
+            ent_out_values[idx].append([tk.CTkEntry(frm_out_text[idx][-1], width=1) for j in range(n)])
             for j in range(n - 1):
                 ent_out_values[idx][-1][j].pack(side=tk.LEFT, padx=px, pady=py)
                 ent_out_values[idx][-1][j].insert(0, '0')
-                tk.Label(frm_out_text[idx][-1], text='T' + str(j + 1) + '+').pack(side=tk.LEFT, padx=px, pady=py)
+                tk.CTkLabel(frm_out_text[idx][-1], text='T' + str(j + 1) + '+').pack(side=tk.LEFT, padx=px, pady=py)
             ent_out_values[idx][-1][n - 1].pack(side=tk.LEFT, padx=px, pady=py)
             ent_out_values[idx][-1][n - 1].insert(0, '0')
-            tk.Label(frm_out_text[idx][-1], text='T' + str(n)).pack(side=tk.LEFT, padx=px, pady=py)
+            tk.CTkLabel(frm_out_text[idx][-1], text='T' + str(n)).pack(side=tk.LEFT, padx=px, pady=py)
 
             interactions_with_prob[idx] = interactions_with_prob.setdefault(idx, 1) + 1
 
-        btn_add_complex = [tk.Button(frm_inp_btn[i], text='Добавить', command=partial(add_complex, i)) for i in
+        btn_add_complex = [tk.CTkButton(frm_inp_btn[i], text='Добавить', command=partial(add_complex, i)) for i in
                            range(m)]
         for i in range(m):
             btn_add_complex[i].pack(side=tk.TOP)
@@ -238,51 +242,55 @@ def main():
                     [[int(ent_out_values[i][k][j].get()) for j in range(n)] for k in range(len(ent_out_values[i]))])
             )) for i in range(m)]
 
-
-            frm_params_base = tk.LabelFrame(frm_main, text='Параметры системы', pady=0)
+            frm_params_base = tk.CTkFrame(frm_main)
             frm_params_base.grid(row=2, column=0, sticky=tk.NSEW)
 
-            frm_params = VerticalScrolledFrame(frm_params_base)
+            # frm_params = VerticalScrolledFrame(frm_params_base)
+            frm_params = tk.CTkScrollableFrame(frm_params_base, width=500, height=100)
+            frm_params.configure(width=max(n,m)*60)
             frm_params.pack(side=tk.TOP, expand=True, pady=1)
 
-            frm_init_values = tk.Frame(frm_params.interior, padx=15, pady=10)
-            frm_lam = tk.Frame(frm_params.interior, padx=15, pady=10)
-            frm_prob = {key: tk.Frame(frm_params.interior, padx=15, pady=10) for key in interactions_with_prob}
-            frm_time = tk.Frame(frm_params.interior, padx=15, pady=10)
-            frm_count = tk.Frame(frm_params.interior, padx=15, pady=10)
+            frm_init_values = tk.CTkFrame(frm_params)
+            frm_lam_base = tk.CTkFrame(frm_params)
+            frm_lam = [tk.CTkFrame(frm_lam_base) for i in range(m)]
+            frm_prob = {key: tk.CTkFrame(frm_params) for key in interactions_with_prob}
+            frm_time = tk.CTkFrame(frm_params)
+            frm_count = tk.CTkFrame(frm_params)
 
             frm_init_values.pack()
-            frm_lam.pack()
+            frm_lam_base.pack()
+            for el in frm_lam:
+                el.pack()
             for el in frm_prob.values():
                 el.pack()
             frm_time.pack()
             frm_count.pack()
 
-            ent_init_values = [tk.Entry(frm_init_values, width=8) for i in range(n)]
-            ent_lam = [tk.Entry(frm_lam, width=8) for i in range(m)]
-            ent_prob = {key: [tk.Entry(frm_prob[key], width=3) for i in range(count)]
+            ent_init_values = [tk.CTkEntry(frm_init_values, width=8) for i in range(n)]
+            ent_lam = [tk.CTkEntry(frm_lam[i], width=8) for i in range(m)]
+            ent_prob = {key: [tk.CTkEntry(frm_prob[key], width=3) for i in range(count)]
                         for key, count in interactions_with_prob.items()}
 
             for i, el in enumerate(ent_init_values):
-                tk.Label(frm_init_values, text='T' + str(i + 1) + ' ').pack(side=tk.LEFT)
+                tk.CTkLabel(frm_init_values, text='T' + str(i + 1) + ' ').pack(side=tk.LEFT)
                 el.pack(side=tk.LEFT)
 
             for i, el in enumerate(ent_lam):
-                tk.Label(frm_lam, text='lam' + str(i + 1) + '=').pack(side=tk.LEFT)
+                tk.CTkLabel(frm_lam[i], text='lam' + str(i + 1) + '=').pack(side=tk.LEFT)
                 el.pack(side=tk.LEFT)
 
             for key, ent in ent_prob.items():
                 for i, el in enumerate(ent):
-                    tk.Label(frm_prob[key], text='p' + str(key + 1) + str(i + 1) + '=').pack(side=tk.LEFT)
+                    tk.CTkLabel(frm_prob[key], text='p' + str(key + 1) + str(i + 1) + '=').pack(side=tk.LEFT)
                     el.pack(side=tk.LEFT)
 
-            ent_time = tk.Entry(frm_time, width=4)
-            ent_count = tk.Entry(frm_count, width=4)
+            ent_time = tk.CTkEntry(frm_time, width=4)
+            ent_count = tk.CTkEntry(frm_count, width=4)
 
-            tk.Label(frm_time, text='T=').pack(side=tk.LEFT)
+            tk.CTkLabel(frm_time, text='T=').pack(side=tk.LEFT)
             ent_time.pack(side=tk.LEFT)
 
-            tk.Label(frm_count, text='N=').pack(side=tk.LEFT)
+            tk.CTkLabel(frm_count, text='N=').pack(side=tk.LEFT)
             ent_count.pack(side=tk.LEFT)
 
             def init_params():
@@ -297,6 +305,7 @@ def main():
                     count = int(ent_count.get())
                 except Exception as ex:
                     print(ex)
+                    return
 
                 if any([False if abs(sum(val) - 1) < 1e-8 else True for val in probabilities.values()]):
                     return
@@ -313,7 +322,7 @@ def main():
                 canvas = FigureCanvasTkAgg(fig,
                                            master=frm_main)
                 canvas.draw()
-                canvas.get_tk_widget().grid(row=0, column=1, rowspan=3, sticky=tk.NSEW,)
+                canvas.get_tk_widget().grid(row=0, column=1, rowspan=3, sticky=tk.NSEW, )
 
                 toolbar = NavigationToolbar2Tk(canvas, frm_main)
                 toolbar.update()
@@ -322,15 +331,15 @@ def main():
                 # print(
                 #     calculate_math_expectation(inter=interactions, init_val=init_values, lam=lam, time=time, n=n, m=m))
 
-            tk.Button(frm_params_base, text='Рассчитать', command=init_params).pack(side=tk.TOP, pady=1)
+            tk.CTkButton(frm_params_base, text='Рассчитать', command=init_params).pack(side=tk.TOP, pady=1)
 
-        frm_btn_apply_complexes = tk.Frame(frm_complexes_base, padx=15, pady=10)
+        frm_btn_apply_complexes = tk.CTkFrame(frm_complexes_base)
         frm_btn_apply_complexes.pack()
-        btn_apply_complexes = tk.Button(frm_btn_apply_complexes, text='Применить', command=init_interactions)
+        btn_apply_complexes = tk.CTkButton(frm_btn_apply_complexes, text='Применить', command=init_interactions)
         btn_apply_complexes.pack()
 
-    btn_apply_sizes = tk.Button(frm_sizes, text='Применить',
-                                command=lambda: init_frm_complexes(ent_n.get(), ent_m.get()))
+    btn_apply_sizes = tk.CTkButton(frm_sizes, text='Применить',
+                                   command=lambda: init_frm_complexes(ent_n.get(), ent_m.get()))
 
     btn_apply_sizes.grid(row=2, column=1, columnspan=2)
 
