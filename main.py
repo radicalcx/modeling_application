@@ -7,6 +7,7 @@ import sympy as sp
 import numpy.typing
 from numpy.random import exponential, rand
 import pandas as pd
+from scipy.stats import norm
 from scipy.integrate import odeint
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import (FigureCanvasTkAgg, NavigationToolbar2Tk)
@@ -37,6 +38,55 @@ class Interaction:
             return self.out[num]
 
 
+class Trajectory:
+    def __init__(self, track_arg, time_arg):
+        self.track = track_arg
+        self.time = time_arg
+
+
+class MyCanvas(FigureCanvasTkAgg):
+    def __init__(self, figure, master, mean, samples,
+                 trajectories_draw: typing.List[Trajectory], type_of_plot, idx: int, time, M, bins):
+        super().__init__(figure, master)
+        plot = self.figure.add_subplot()
+        if type_of_plot == 'diagram':
+            plot.hist(samples[:, idx],
+                      bins=bins,
+                      range=(samples[:, idx].min(), samples[:, idx].max()),
+                      density='True',
+                      color='blue')
+            grid = np.arange(-3, 3, 0.1)
+            plot.plot(grid, norm.pdf(grid, 0, 1), color='black', linewidth=3.0)
+        elif type_of_plot == 'trajectory':
+            plot.plot(np.linspace(0, time, time), mean[:, idx], color='red', linewidth=5, zorder=M + 1, linestyle='--')
+            for tr in trajectories_draw:
+                plot.plot(tr.time, tr.track[:, idx], linewidth=2)
+        else:
+            return
+        self.draw()
+
+    def change_plot(self, mean, samples,
+                    trajectories_draw: typing.List[Trajectory], type_of_plot, idx: int, time, M, bins):
+        self.figure.clf()
+        plot = self.figure.add_subplot()
+
+        if type_of_plot == 'diagram':
+            plot.hist(samples[:, idx],
+                      bins=bins,
+                      range=(samples[:, idx].min(), samples[:, idx].max()),
+                      density='True',
+                      color='blue')
+            grid = np.arange(-3, 3, 0.1)
+            plot.plot(grid, norm.pdf(grid, 0, 1), color='black', linewidth=3.0)
+        elif type_of_plot == 'trajectory':
+            plot.plot(np.linspace(0, time, time), mean[:, idx], color='red', linewidth=5, zorder=M + 1, linestyle='--')
+            for tr in trajectories_draw:
+                plot.plot(tr.time, tr.track[:, idx], linewidth=2)
+        else:
+            return
+        self.draw()
+
+
 def create_trajectory(inter: typing.List[Interaction], init_val, lam, time, m):
     trajectory = np.array([init_val])
     time_array = np.zeros(1)
@@ -55,7 +105,8 @@ def create_trajectory(inter: typing.List[Interaction], init_val, lam, time, m):
 
     trajectory[-1] = trajectory[-2]
     time_array[-1] = time
-    return trajectory, time_array
+
+    return Trajectory(trajectory, time_array)
 
 
 def calculate_math_expectation(inter: typing.List[Interaction], init_val, lam, time, n, m):
@@ -91,6 +142,27 @@ def calculate_math_expectation(inter: typing.List[Interaction], init_val, lam, t
         return res
 
     return odeint(system, init_val, np.linspace(0, time, time), args=(lam,))
+
+
+def modeling(inter: typing.List[Interaction], init_val, lam, time, n, m, N, M):
+    samples = np.empty((N, n))
+    trajectories_draw = [create_trajectory(inter, init_val, lam, time, m) for i in range(M)]
+    for i in range(M):
+        samples[i] = trajectories_draw[i].track[-1]
+    for i in range(M, N):
+        samples[i] = create_trajectory(inter, init_val, lam, time, m).track[-1]
+
+    mean = calculate_math_expectation(inter, init_val, lam, time, n, m)
+    std = samples.std(axis=0)
+
+    for i in range(n):
+        samples[:, i] = (samples[:, i] - mean[-1][i]) / (std[i] + 1e-10)
+
+    return mean, samples, trajectories_draw
+
+
+def calculate_chi2(sample: numpy.typing.NDArray):
+    pass
 
 
 def main():
@@ -210,6 +282,7 @@ def main():
             frm_prob = {key: tk.CTkFrame(frm_params) for key in interactions_with_prob}
             frm_time = tk.CTkFrame(frm_params)
             frm_count = tk.CTkFrame(frm_params)
+            frm_count_draw = tk.CTkFrame(frm_params)
 
             frm_init_values.pack()
             frm_lam_base.pack()
@@ -219,6 +292,7 @@ def main():
                 el.pack()
             frm_time.pack()
             frm_count.pack()
+            frm_count_draw.pack()
 
             ent_init_values = [tk.CTkEntry(frm_init_values, width=8) for i in range(n)]
             ent_lam = [tk.CTkEntry(frm_lam[i], width=8) for i in range(m)]
@@ -240,6 +314,7 @@ def main():
 
             ent_time = tk.CTkEntry(frm_time, width=4)
             ent_count = tk.CTkEntry(frm_count, width=4)
+            ent_count_draw = tk.CTkEntry(frm_count_draw, width=4)
 
             tk.CTkLabel(frm_time, text='T=').pack(side=tk.LEFT)
             ent_time.pack(side=tk.LEFT)
@@ -247,8 +322,10 @@ def main():
             tk.CTkLabel(frm_count, text='N=').pack(side=tk.LEFT)
             ent_count.pack(side=tk.LEFT)
 
+            tk.CTkLabel(frm_count, text='M=').pack(side=tk.LEFT)
+            ent_count_draw.pack(side=tk.LEFT)
+
             def init_params():
-                # nonlocal time, probabilities, lam, init_values, count
 
                 try:
                     init_values = np.array([int(ent_init_values[i].get()) for i in range(n)])
@@ -257,6 +334,7 @@ def main():
                     probabilities = {num: np.array(list(map(lambda x: float(x.get()), values))) for num, values in
                                      ent_prob.items()}
                     count = int(ent_count.get())
+                    count_draw = int(ent_count_draw.get())
                 except Exception as ex:
                     print(ex)
                     return
@@ -267,25 +345,59 @@ def main():
                     for num, arr in probabilities.items():
                         interactions[num].add_probabilities(arr)
 
-                fig = Figure(figsize=(5, 5),
-                             dpi=100)
-                tr, t_a = create_trajectory(interactions, init_values, lam, time, m)
+                mean, samples, trajectories_draw = modeling(interactions, init_values, lam, time,
+                                                            n, m, count, count_draw)
+                bins = int(1 + 3.32 * np.log10(count))
 
-                plot1 = fig.add_subplot()
-                plot1.plot(t_a, tr[:, 0])
-                canvas = FigureCanvasTkAgg(fig,
-                                           master=frm_main)
-                canvas.draw()
-                canvas.get_tk_widget().grid(row=0, column=1, rowspan=3, sticky=tk.NSEW, )
+                combobox_var = tk.StringVar(value='T1')
+                switch_var = tk.StringVar(value="trajectory")
 
-                toolbar = NavigationToolbar2Tk(canvas, frm_main)
+                frm_plot_base = tk.CTkFrame(frm_main)
+                frm_plot_switch = tk.CTkFrame(frm_plot_base)
+                frm_plot = tk.CTkFrame(frm_plot_base)
+
+                fig = Figure(figsize=(5, 5), dpi=100)
+                # canvas = FigureCanvasTkAgg(fig, master=frm_plot)
+                canvas = MyCanvas(fig, frm_plot, mean, samples, trajectories_draw,
+                                  switch_var.get(), int(combobox_var.get()[-1])-1, time, count_draw, bins)
+
+                tk.CTkLabel(frm_plot_switch, text='Диаграмма').pack(side=tk.LEFT)
+                swt_plot = tk.CTkSwitch(frm_plot_switch,
+                                        onvalue="trajectory", offvalue="diagram",
+                                        text='Траектории', variable=switch_var,
+                                        command=lambda: canvas.change_plot(mean, samples, trajectories_draw,
+                                                                           switch_var.get(),
+                                                                           int(combobox_var.get()[-1])-1,
+                                                                           time, count_draw, bins)
+                                        )
+                swt_plot.pack(side=tk.LEFT)
+
+                cmb_type = tk.CTkComboBox(frm_plot_switch,
+                                          values=['T' + str(i + 1) for i in range(n)],
+                                          variable=combobox_var,
+                                          command=lambda x: canvas.change_plot(mean, samples, trajectories_draw,
+                                                                             switch_var.get(),
+                                                                             int(combobox_var.get()[-1])-1,
+                                                                             time, count_draw, bins)
+                                          )
+                cmb_type.pack(side=tk.LEFT)
+
+                frm_plot_switch.pack()
+                frm_plot.pack(fill=tk.BOTH, expand=True)
+
+                # change_plot(canvas, mean, samples, trajectories_draw,
+                #             switch_var.get(), int(combobox_var.get()[-1]), time,
+                #             count_draw,
+                #             bins)
+
+                toolbar = NavigationToolbar2Tk(canvas, frm_plot)
                 toolbar.update()
 
-                canvas.get_tk_widget().grid(row=0, column=1, rowspan=3, sticky=tk.NSEW)
-                # print(
-                #     calculate_math_expectation(inter=interactions, init_val=init_values, lam=lam, time=time, n=n, m=m))
+                canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
 
-            tk.CTkButton(frm_params_base, text='Рассчитать', command=init_params).pack(side=tk.TOP, pady=1)
+                frm_plot_base.grid(row=0, column=1, rowspan=3, sticky=tk.NSEW)
+
+            tk.CTkButton(frm_params_base, text='Рассчитать', command=init_params).pack()
 
         frm_btn_apply_complexes = tk.CTkFrame(frm_complexes_base)
         frm_btn_apply_complexes.pack()
