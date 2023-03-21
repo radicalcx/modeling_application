@@ -7,10 +7,11 @@ import sympy as sp
 import numpy.typing
 from numpy.random import exponential, rand
 import pandas as pd
-from scipy.stats import norm
+from scipy.stats import norm, chi2
 from scipy.integrate import odeint
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import (FigureCanvasTkAgg, NavigationToolbar2Tk)
+from pandastable import Table
 
 tk.set_appearance_mode("Dark")  # Modes: "System" (standard), "Dark", "Light"
 tk.set_default_color_theme("green")  # Themes: "blue" (standard), "green", "dark-blue"
@@ -161,8 +162,56 @@ def modeling(inter: typing.List[Interaction], init_val, lam, time, n, m, N, M):
     return mean, samples, trajectories_draw
 
 
-def calculate_chi2(sample: numpy.typing.NDArray):
-    pass
+def calculate_chi2(sample: numpy.typing.NDArray, bins, n, N):
+    intervals = [np.empty(bins + 1) for i in range(n)]
+    emp_frequencies = [np.empty(bins) for i in range(n)]
+
+    for i in range(n):
+        emp_frequencies[i], intervals[i] = np.histogram(sample[:, i], bins=bins)
+    print(f"sample{sample}\n emp_frequence{emp_frequencies}\n intervals{intervals}\n")
+
+    for i in range(n):
+        while emp_frequencies[i][0] < 5:
+            temp = emp_frequencies[i][0]
+            emp_frequencies[i] = emp_frequencies[i][1:]
+            emp_frequencies[i][0] += temp
+            try:
+                intervals[i] = np.delete(intervals[i], 1)
+            except Exception as ex:
+                break
+
+        while emp_frequencies[i][-1] < 5:
+            temp = emp_frequencies[i][-1]
+            emp_frequencies[i] = emp_frequencies[i][:-1]
+            emp_frequencies[i][-1] += temp
+            try:
+                intervals[i] = np.delete(intervals[i], -2)
+            except Exception as ex:
+                break
+    thr_frequencies = [np.empty(len(emp_frequencies[i])) for i in range(n)]
+    print(f"emp_frequence{emp_frequencies}\n intervals{intervals}\n")
+    for i in range(n):
+        thr_frequencies[i][0] = norm(0, 1).cdf(intervals[i][1])
+
+    for i in range(n):
+        for j in range(1, emp_frequencies[i].shape[0] - 1):
+            thr_frequencies[i][j] = norm(0, 1).cdf(intervals[i][j + 1]) - norm(0, 1).cdf(intervals[i][j])
+
+    for i in range(n):
+        thr_frequencies[i][-1] = 1 - norm(0, 1).cdf(intervals[i][-2])
+
+    t = [el * N for el in thr_frequencies]
+    print(f"thr_frequencies{t}")
+
+    table_chi2 = np.empty((n, 2))
+    for i in range(n):
+        table_chi2[i, 0] = (((emp_frequencies[i] - N * thr_frequencies[i]) ** 2) / (N * thr_frequencies[i])).sum()
+        table_chi2[i, 1] = chi2(emp_frequencies[i].shape[0] - 1).ppf(0.95)
+
+    df_intervals = [pd.DataFrame({'Эмперические': emp_frequencies[i], 'Теоретические': thr_frequencies[i] * N,
+                                  'left': intervals[i][:-1], 'right': intervals[i][1:]}) for i in range(n)]
+
+    return pd.DataFrame(table_chi2, columns=['Статистика', 'Квантиль']), df_intervals
 
 
 def main():
@@ -237,8 +286,6 @@ def main():
             ent_out_values[i][0][n - 1].pack(side=tk.LEFT, padx=px, pady=py)
             ent_out_values[i][0][n - 1].insert(0, '0')
             tk.CTkLabel(frm_out_text[i][0], text='T' + str(n)).pack(side=tk.LEFT, padx=px, pady=py)
-
-        # nonlocal interactions_with_prob
 
         def add_complex(idx):
             frm_out_text[idx].append(tk.CTkFrame(frm_out[idx]))
@@ -322,7 +369,7 @@ def main():
             tk.CTkLabel(frm_count, text='N=').pack(side=tk.LEFT)
             ent_count.pack(side=tk.LEFT)
 
-            tk.CTkLabel(frm_count, text='M=').pack(side=tk.LEFT)
+            tk.CTkLabel(frm_count_draw, text='M=').pack(side=tk.LEFT)
             ent_count_draw.pack(side=tk.LEFT)
 
             def init_params():
@@ -359,7 +406,7 @@ def main():
                 fig = Figure(figsize=(5, 5), dpi=100)
                 # canvas = FigureCanvasTkAgg(fig, master=frm_plot)
                 canvas = MyCanvas(fig, frm_plot, mean, samples, trajectories_draw,
-                                  switch_var.get(), int(combobox_var.get()[-1])-1, time, count_draw, bins)
+                                  switch_var.get(), int(combobox_var.get()[-1]) - 1, time, count_draw, bins)
 
                 tk.CTkLabel(frm_plot_switch, text='Диаграмма').pack(side=tk.LEFT)
                 swt_plot = tk.CTkSwitch(frm_plot_switch,
@@ -367,7 +414,7 @@ def main():
                                         text='Траектории', variable=switch_var,
                                         command=lambda: canvas.change_plot(mean, samples, trajectories_draw,
                                                                            switch_var.get(),
-                                                                           int(combobox_var.get()[-1])-1,
+                                                                           int(combobox_var.get()[-1]) - 1,
                                                                            time, count_draw, bins)
                                         )
                 swt_plot.pack(side=tk.LEFT)
@@ -376,19 +423,54 @@ def main():
                                           values=['T' + str(i + 1) for i in range(n)],
                                           variable=combobox_var,
                                           command=lambda x: canvas.change_plot(mean, samples, trajectories_draw,
-                                                                             switch_var.get(),
-                                                                             int(combobox_var.get()[-1])-1,
-                                                                             time, count_draw, bins)
+                                                                               switch_var.get(),
+                                                                               int(combobox_var.get()[-1]) - 1,
+                                                                               time, count_draw, bins)
                                           )
                 cmb_type.pack(side=tk.LEFT)
 
                 frm_plot_switch.pack()
-                frm_plot.pack(fill=tk.BOTH, expand=True)
+                df_chi2, df_intervals = calculate_chi2(samples, bins, n, count)
 
-                # change_plot(canvas, mean, samples, trajectories_draw,
-                #             switch_var.get(), int(combobox_var.get()[-1]), time,
-                #             count_draw,
-                #             bins)
+                def show_statistics():
+                    frm = tk.CTkToplevel()
+                    frm.title('statistics')
+
+                    tbv = tk.CTkTabview(frm)
+                    tbv.pack()
+                    tbv.add('chi2')
+                    for i in range(n):
+                        tbv.add('T' + str(i + 1))
+
+                    # table = Table(tbv.tab('chi2'), dataframe=df_chi2,
+                    #            showtoolbar=True, showstatusbar=True)
+                    # table.show()
+
+                    # frm_chi2 = tk.CTkFrame(frm)
+                    # frm_chi2.grid(row=0, column=0, columnspan=2)
+                    # pt = Table(frm_chi2, dataframe=df_chi2,
+                    #            showtoolbar=True, showstatusbar=True)
+                    # pt.show()
+                    # r = 1
+                    # c = 0
+                    # for i in range(n):
+                    #     frm_label = tk.CTkFrame(frm)
+                    #     frm_label.grid(row=r, column=c)
+                    #     tk.CTkLabel(frm_label, text='T' + str((r - 1) * 2 + c + 1)).pack()
+                    #     frm_temp = tk.CTkFrame(frm)
+                    #     frm_temp.grid(row=r + 1, column=c)
+                    #     pt = Table(frm_temp, dataframe=df_intervals[i],
+                    #                showtoolbar=True, showstatusbar=True)
+                    #     pt.show()
+                    #     c += 1
+                    #     if c > 2:
+                    #         c = 0
+                    #         r += 1
+
+                    frm.mainloop()
+
+                tk.CTkButton(frm_plot_switch, text='Статистика', command=show_statistics).pack(side=tk.RIGHT)
+                frm_plot.pack(fill=tk.BOTH, expand=True)
 
                 toolbar = NavigationToolbar2Tk(canvas, frm_plot)
                 toolbar.update()
