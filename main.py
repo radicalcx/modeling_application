@@ -66,7 +66,7 @@ def create_trajectory(inter: typing.List[Interaction], init_val, lam, time, m):
     return Trajectory(trajectory, time_array)
 
 
-def calculate_math_expectation(inter: typing.List[Interaction], init_val, lam, time, n, m):
+def calculate_expected_value(inter: typing.List[Interaction], init_val, lam, time, n, m):
     s = [sp.Symbol('s' + str(i)) for i in range(n)]
     arg_for_subs = [(s[i], 1) for i in range(n)]
     components = [sum(
@@ -109,7 +109,7 @@ def modeling(inter: typing.List[Interaction], init_val, lam, time, n, m, N, M):
     for i in range(M, N):
         samples[i] = create_trajectory(inter, init_val, lam, time, m).track[-1]
 
-    mean = calculate_math_expectation(inter, init_val, lam, time, n, m)
+    mean = calculate_expected_value(inter, init_val, lam, time, n, m)
     std = samples.std(axis=0)
 
     for i in range(n):
@@ -171,7 +171,7 @@ def calculate_chi2(sample: numpy.typing.NDArray, bins, n, N):
 def show_exception(exc: Exception | str):
     frm_ex = tk.CTkToplevel()
     frm_ex.title('error')
-    tk.CTkLabel(frm_ex, text='error: '+str(exc)).pack(ipadx=10, ipady=10, padx=10, pady=10)
+    tk.CTkLabel(frm_ex, text='error: ' + str(exc)).pack(ipadx=10, ipady=10, padx=10, pady=10)
     frm_ex.resizable(width=False, height=False)
     frm_ex.attributes("-topmost", True)
     frm_ex.mainloop()
@@ -439,7 +439,7 @@ class App(tk.CTk):
                                                                        self.time,
                                                                        self.n, self.m, self.count, self.count_draw)
         except Exception as ex:
-            show_exception(str(ex)+' in modeling')
+            show_exception(str(ex) + ' in modeling')
             return
 
         self.bins = int(1 + 3.32 * np.log10(self.count))
@@ -499,11 +499,14 @@ class App(tk.CTk):
                       color='blue')
             grid = np.arange(-3, 3, 0.1)
             plot.plot(grid, norm.pdf(grid, 0, 1), color='black', linewidth=3.0)
+            plot.grid()
         elif self.switch_var.get() == 'trajectory':
             plot.plot(np.linspace(0, self.time, self.time), self.mean[:, idx], color='red', linewidth=5,
-                      zorder=self.count_draw + 1, linestyle='--')
+                      zorder=self.count_draw + 1, linestyle='--', label='expected value')
             for tr in self.trajectories_draw:
                 plot.plot(tr.time, tr.track[:, idx], linewidth=2)
+            plot.grid()
+            plot.legend()
         else:
             return
         self.canvas.draw()
@@ -511,42 +514,32 @@ class App(tk.CTk):
     def show_statistics(self):
         frm = tk.CTkToplevel()
         frm.title('statistics')
+        frm.geometry('400x280')
+        frm.resizable(width=False, height=False)
+        frm.attributes("-topmost", True)
 
-        tbv = tk.CTkTabview(frm)
-        tbv.pack()
-        tbv.add('chi2')
+        frm_scroll_base = tk.CTkScrollableFrame(frm)
+        frm_scroll_base.pack(expand=True, fill=tk.BOTH)
+        frm_chi2 = tk.CTkFrame(frm_scroll_base)
+        table_chi2 = Table(frm_chi2, dataframe=self.df_chi2,
+                           showtoolbar=False, showstatusbar=False)
+        frm_chi2.pack(expand=True, fill=tk.BOTH)
+        table_chi2.show()
+
         for i in range(self.n):
-            tbv.add('T' + str(i + 1))
-
-        # table = Table(tbv.tab('chi2'), dataframe=df_chi2,
-        #            showtoolbar=True, showstatusbar=True)
-        # table.show()
-
-        # frm_chi2 = tk.CTkFrame(frm)
-        # frm_chi2.grid(row=0, column=0, columnspan=2)
-        # pt = Table(frm_chi2, dataframe=df_chi2,
-        #            showtoolbar=True, showstatusbar=True)
-        # pt.show()
-        # r = 1
-        # c = 0
-        # for i in range(n):
-        #     frm_label = tk.CTkFrame(frm)
-        #     frm_label.grid(row=r, column=c)
-        #     tk.CTkLabel(frm_label, text='T' + str((r - 1) * 2 + c + 1)).pack()
-        #     frm_temp = tk.CTkFrame(frm)
-        #     frm_temp.grid(row=r + 1, column=c)
-        #     pt = Table(frm_temp, dataframe=df_intervals[i],
-        #                showtoolbar=True, showstatusbar=True)
-        #     pt.show()
-        #     c += 1
-        #     if c > 2:
-        #         c = 0
-        #         r += 1
+            frm_temp_tb = tk.CTkFrame(frm_scroll_base)
+            frm_temp_lb = tk.CTkFrame(frm_scroll_base)
+            label = tk.CTkLabel(frm_temp_lb, font=('Arial', 15), text='T'+str(i+1))
+            table = Table(frm_temp_tb, dataframe=self.df_intervals[i],
+                          showtoolbar=False, showstatusbar=False)
+            frm_temp_lb.pack(expand=True, fill=tk.BOTH)
+            frm_temp_tb.pack(expand=True, fill=tk.BOTH)
+            label.pack(expand=True, fill=tk.BOTH)
+            table.show()
 
         frm.mainloop()
 
 
 if __name__ == "__main__":
-        app = App()
-        app.mainloop()
-
+    app = App()
+    app.mainloop()
