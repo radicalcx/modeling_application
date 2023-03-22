@@ -1,5 +1,4 @@
 import customtkinter as tk
-# import tkinter as tk
 import typing
 from functools import partial
 import numpy as np
@@ -43,49 +42,6 @@ class Trajectory:
     def __init__(self, track_arg, time_arg):
         self.track = track_arg
         self.time = time_arg
-
-
-class MyCanvas(FigureCanvasTkAgg):
-    def __init__(self, figure, master, mean, samples,
-                 trajectories_draw: typing.List[Trajectory], type_of_plot, idx: int, time, M, bins):
-        super().__init__(figure, master)
-        plot = self.figure.add_subplot()
-        if type_of_plot == 'diagram':
-            plot.hist(samples[:, idx],
-                      bins=bins,
-                      range=(samples[:, idx].min(), samples[:, idx].max()),
-                      density='True',
-                      color='blue')
-            grid = np.arange(-3, 3, 0.1)
-            plot.plot(grid, norm.pdf(grid, 0, 1), color='black', linewidth=3.0)
-        elif type_of_plot == 'trajectory':
-            plot.plot(np.linspace(0, time, time), mean[:, idx], color='red', linewidth=5, zorder=M + 1, linestyle='--')
-            for tr in trajectories_draw:
-                plot.plot(tr.time, tr.track[:, idx], linewidth=2)
-        else:
-            return
-        self.draw()
-
-    def change_plot(self, mean, samples,
-                    trajectories_draw: typing.List[Trajectory], type_of_plot, idx: int, time, M, bins):
-        self.figure.clf()
-        plot = self.figure.add_subplot()
-
-        if type_of_plot == 'diagram':
-            plot.hist(samples[:, idx],
-                      bins=bins,
-                      range=(samples[:, idx].min(), samples[:, idx].max()),
-                      density='True',
-                      color='blue')
-            grid = np.arange(-3, 3, 0.1)
-            plot.plot(grid, norm.pdf(grid, 0, 1), color='black', linewidth=3.0)
-        elif type_of_plot == 'trajectory':
-            plot.plot(np.linspace(0, time, time), mean[:, idx], color='red', linewidth=5, zorder=M + 1, linestyle='--')
-            for tr in trajectories_draw:
-                plot.plot(tr.time, tr.track[:, idx], linewidth=2)
-        else:
-            return
-        self.draw()
 
 
 def create_trajectory(inter: typing.List[Interaction], init_val, lam, time, m):
@@ -168,7 +124,6 @@ def calculate_chi2(sample: numpy.typing.NDArray, bins, n, N):
 
     for i in range(n):
         emp_frequencies[i], intervals[i] = np.histogram(sample[:, i], bins=bins)
-    print(f"sample{sample}\n emp_frequence{emp_frequencies}\n intervals{intervals}\n")
 
     for i in range(n):
         while emp_frequencies[i][0] < 5:
@@ -189,7 +144,7 @@ def calculate_chi2(sample: numpy.typing.NDArray, bins, n, N):
             except Exception as ex:
                 break
     thr_frequencies = [np.empty(len(emp_frequencies[i])) for i in range(n)]
-    print(f"emp_frequence{emp_frequencies}\n intervals{intervals}\n")
+
     for i in range(n):
         thr_frequencies[i][0] = norm(0, 1).cdf(intervals[i][1])
 
@@ -201,7 +156,6 @@ def calculate_chi2(sample: numpy.typing.NDArray, bins, n, N):
         thr_frequencies[i][-1] = 1 - norm(0, 1).cdf(intervals[i][-2])
 
     t = [el * N for el in thr_frequencies]
-    print(f"thr_frequencies{t}")
 
     table_chi2 = np.empty((n, 2))
     for i in range(n):
@@ -214,285 +168,360 @@ def calculate_chi2(sample: numpy.typing.NDArray, bins, n, N):
     return pd.DataFrame(table_chi2, columns=['Статистика', 'Квантиль']), df_intervals
 
 
-def main():
-    frm_main = tk.CTk()
-    frm_main.title('modeling_application')
-    frm_main.grid_columnconfigure(0, weight=1)
-    frm_main.grid_columnconfigure(1, weight=8)
-    frm_main.grid_rowconfigure((0, 1, 2), weight=1)
+class App(tk.CTk):
+    def __init__(self):
+        super().__init__()
 
-    frm_sizes = tk.CTkFrame(frm_main)
-    frm_sizes.grid(row=0, column=0, padx=15, pady=1, sticky=tk.NSEW)
+        self.title('modeling_application')
+        self.grid_columnconfigure(0, weight=1)
+        self.grid_columnconfigure(1, weight=8)
+        self.grid_rowconfigure((0, 1, 2), weight=1)
 
-    lbl_n = tk.CTkLabel(frm_sizes, text='Количество типов элементов')
-    lbl_m = tk.CTkLabel(frm_sizes, text='Количество комплексов взаимодействия')
+        self.frm_sizes = tk.CTkFrame(self)
+        self.frm_sizes.grid(row=0, column=0, padx=15, pady=1, sticky=tk.NSEW)
 
-    ent_n = tk.CTkEntry(frm_sizes, width=2)
-    ent_m = tk.CTkEntry(frm_sizes, width=2)
+        self.lbl_n = tk.CTkLabel(self.frm_sizes, text='Количество типов элементов')
+        self.lbl_m = tk.CTkLabel(self.frm_sizes, text='Количество комплексов взаимодействия')
 
-    lbl_n.grid(row=0, column=0, padx=15, pady=5)
-    ent_n.grid(row=0, column=1, padx=15, pady=5)
+        self.ent_n = tk.CTkEntry(self.frm_sizes, width=2)
+        self.ent_m = tk.CTkEntry(self.frm_sizes, width=2)
 
-    lbl_m.grid(row=1, column=0, padx=15, pady=5)
-    ent_m.grid(row=1, column=1, padx=15, pady=5)
+        self.lbl_n.grid(row=0, column=0, padx=15, pady=5)
+        self.ent_n.grid(row=0, column=1, padx=15, pady=5)
 
-    def init_frm_complexes(n_str, m_str):
+        self.lbl_m.grid(row=1, column=0, padx=15, pady=5)
+        self.ent_m.grid(row=1, column=1, padx=15, pady=5)
+        self.btn_apply_sizes = tk.CTkButton(self.frm_sizes, text='Применить',
+                                            command=self.init_frm_complexes)
+
+        self.btn_apply_sizes.grid(row=2, column=1, columnspan=2)
+
+        self.n = None
+        self.m = None
+        self.interactions_with_prob = None
+        self.frm_complexes_base = None
+        self.frm_complexes = None
+        self.frm_complex_rows = None
+        self.frm_out = None
+        self.frm_out_text = None
+        self.frm_inp_text = None
+        self.frm_inp_btn = None
+        self.ent_inp_values = None
+        self.ent_out_values = None
+        self.btn_add_complex = None
+        self.frm_btn_apply_complexes = None
+        self.btn_apply_complexes = None
+        self.interactions = None
+        self.frm_params_base = None
+        self.frm_params = None
+        self.frm_init_values = None
+        self.frm_lam_base = None
+        self.frm_time = None
+        self.frm_lam = None
+        self.frm_prob = None
+        self.frm_count = None
+        self.frm_count_draw = None
+        self.ent_init_values = None
+        self.ent_lam = None
+        self.ent_prob = None
+        self.ent_time = None
+        self.ent_count = None
+        self.ent_count_draw = None
+        self.init_values = None
+        self.lam = None
+        self.time = None
+        self.probabilities = None
+        self.count = None
+        self.count_draw = None
+        self.mean = None
+        self.samples = None
+        self.trajectories_draw = None
+        self.bins = None
+        self.combobox_var = None
+        self.switch_var = None
+        self.frm_plot_base = None
+        self.frm_plot_switch = None
+        self.frm_plot = None
+        self.fig = None
+        self.canvas = None
+        self.swt_plot = None
+        self.cmb_type = None
+        self.df_chi2 = None
+        self.df_intervals = None
+        self.toolbar = None
+
+    def init_frm_complexes(self):
         try:
-            n = int(n_str)
-            m = int(m_str)
+            self.n = int(self.ent_n.get())
+            self.m = int(self.ent_m.get())
         except Exception as ex:
             return
 
-        interactions_with_prob = {}
+        self.interactions_with_prob = {}
 
-        frm_complexes_base = tk.CTkFrame(frm_main)
-        # frm_complexes = VerticalScrolledFrame(frm_complexes_base, padx=15, pady=10)
-        frm_complexes = tk.CTkScrollableFrame(frm_complexes_base, width=500)
-        frm_complex_rows = [tk.CTkFrame(frm_complexes) for i in range(m)]
-        frm_out = [tk.CTkFrame(frm_complex_rows[i]) for i in range(m)]
-        frm_out_text = [[tk.CTkFrame(frm_out[i]), ] for i in range(m)]
-        frm_inp_text = [tk.CTkFrame(frm_complex_rows[i]) for i in range(m)]
-        frm_inp_btn = [tk.CTkFrame(frm_complex_rows[i]) for i in range(m)]
+        self.frm_complexes_base = tk.CTkFrame(self)
+        self.frm_complexes = tk.CTkScrollableFrame(self.frm_complexes_base, width=500)
+        self.frm_complex_rows = [tk.CTkFrame(self.frm_complexes) for i in range(self.m)]
+        self.frm_out = [tk.CTkFrame(self.frm_complex_rows[i]) for i in range(self.m)]
+        self.frm_out_text = [[tk.CTkFrame(self.frm_out[i]), ] for i in range(self.m)]
+        self.frm_inp_text = [tk.CTkFrame(self.frm_complex_rows[i]) for i in range(self.m)]
+        self.frm_inp_btn = [tk.CTkFrame(self.frm_complex_rows[i]) for i in range(self.m)]
 
-        frm_complexes_base.grid(row=1, column=0, padx=15, pady=1, sticky=tk.NSEW)
-        frm_complexes.pack()
-        for i in range(m):
-            frm_complex_rows[i].pack(padx=15, pady=5)
-            frm_inp_text[i].grid(row=0, column=0, padx=0, sticky=tk.NSEW)
-            frm_inp_btn[i].grid(row=1, column=0, padx=0, sticky=tk.NSEW)
-            frm_out[i].grid(row=0, column=1, padx=0, sticky=tk.NSEW)
-            frm_out_text[i][0].pack(side=tk.TOP, padx=0, pady=0, expand=True)
+        self.frm_complexes_base.grid(row=1, column=0, padx=15, pady=1, sticky=tk.NSEW)
+        self.frm_complexes.pack()
+
+        for i in range(self.m):
+            self.frm_complex_rows[i].pack(padx=15, pady=5)
+            self.frm_inp_text[i].grid(row=0, column=0, padx=0, sticky=tk.NSEW)
+            self.frm_inp_btn[i].grid(row=1, column=0, padx=0, sticky=tk.NSEW)
+            self.frm_out[i].grid(row=0, column=1, padx=0, sticky=tk.NSEW)
+            self.frm_out_text[i][0].pack(side=tk.TOP, padx=0, pady=0, expand=True)
 
         # nonlocal ent_inp_values, ent_out_values
-        ent_inp_values = [[tk.CTkEntry(frm_inp_text[i], width=1) for j in range(n)] for i in range(m)]
-        ent_out_values = [[[tk.CTkEntry(frm_out_text[i][0], width=1) for j in range(n)], ] for i in range(m)]
-        px = 0
-        py = 3
-        for i in range(m):
-            for j in range(n - 1):
-                ent_inp_values[i][j].pack(side=tk.LEFT, padx=px, pady=py)
-                ent_inp_values[i][j].insert(0, '0')
-                tk.CTkLabel(frm_inp_text[i], text='T' + str(j + 1) + '+').pack(side=tk.LEFT, padx=px, pady=py)
-            ent_inp_values[i][n - 1].pack(side=tk.LEFT, padx=px, pady=py)
-            ent_inp_values[i][n - 1].insert(0, '0')
-            tk.CTkLabel(frm_inp_text[i], text='T' + str(n) + ' \N{RIGHTWARDS BLACK ARROW}').pack(side=tk.LEFT, padx=px,
-                                                                                                 pady=py)
+        self.ent_inp_values = [[tk.CTkEntry(self.frm_inp_text[i], width=1) for j in range(self.n)] for i in
+                               range(self.m)]
+        self.ent_out_values = [[[tk.CTkEntry(self.frm_out_text[i][0], width=1) for j in range(self.n)], ] for i in
+                               range(self.m)]
+        self.px = 0
+        self.py = 3
+        for i in range(self.m):
+            for j in range(self.n - 1):
+                self.ent_inp_values[i][j].pack(side=tk.LEFT, padx=self.px, pady=self.py)
+                self.ent_inp_values[i][j].insert(0, '0')
+                tk.CTkLabel(self.frm_inp_text[i], text='T' + str(j + 1) + '+').pack(side=tk.LEFT, padx=self.px,
+                                                                                    pady=self.py)
+            self.ent_inp_values[i][self.n - 1].pack(side=tk.LEFT, padx=self.px, pady=self.py)
+            self.ent_inp_values[i][self.n - 1].insert(0, '0')
+            tk.CTkLabel(self.frm_inp_text[i], text='T' + str(self.n) + ' \N{RIGHTWARDS BLACK ARROW}').pack(side=tk.LEFT,
+                                                                                                           padx=self.px,
+                                                                                                           pady=self.py)
 
-        for i in range(m):
-            for j in range(n - 1):
-                ent_out_values[i][0][j].pack(side=tk.LEFT, padx=px, pady=py)
-                ent_out_values[i][0][j].insert(0, '0')
-                tk.CTkLabel(frm_out_text[i][0], text='T' + str(j + 1) + '+').pack(side=tk.LEFT, padx=px, pady=py)
-            ent_out_values[i][0][n - 1].pack(side=tk.LEFT, padx=px, pady=py)
-            ent_out_values[i][0][n - 1].insert(0, '0')
-            tk.CTkLabel(frm_out_text[i][0], text='T' + str(n)).pack(side=tk.LEFT, padx=px, pady=py)
+        for i in range(self.m):
+            for j in range(self.n - 1):
+                self.ent_out_values[i][0][j].pack(side=tk.LEFT, padx=self.px, pady=self.py)
+                self.ent_out_values[i][0][j].insert(0, '0')
+                tk.CTkLabel(self.frm_out_text[i][0], text='T' + str(j + 1) + '+').pack(side=tk.LEFT, padx=self.px,
+                                                                                       pady=self.py)
+            self.ent_out_values[i][0][self.n - 1].pack(side=tk.LEFT, padx=self.px, pady=self.py)
+            self.ent_out_values[i][0][self.n - 1].insert(0, '0')
+            tk.CTkLabel(self.frm_out_text[i][0], text='T' + str(self.n)).pack(side=tk.LEFT, padx=self.px, pady=self.py)
 
-        def add_complex(idx):
-            frm_out_text[idx].append(tk.CTkFrame(frm_out[idx]))
-            frm_out_text[idx][-1].pack()
+        self.btn_add_complex = [tk.CTkButton(self.frm_inp_btn[i], text='Добавить', command=partial(self.add_complex, i))
+                                for i in
+                                range(self.m)]
+        for i in range(self.m):
+            self.btn_add_complex[i].pack(side=tk.TOP)
 
-            ent_out_values[idx].append([tk.CTkEntry(frm_out_text[idx][-1], width=1) for j in range(n)])
-            for j in range(n - 1):
-                ent_out_values[idx][-1][j].pack(side=tk.LEFT, padx=px, pady=py)
-                ent_out_values[idx][-1][j].insert(0, '0')
-                tk.CTkLabel(frm_out_text[idx][-1], text='T' + str(j + 1) + '+').pack(side=tk.LEFT, padx=px, pady=py)
-            ent_out_values[idx][-1][n - 1].pack(side=tk.LEFT, padx=px, pady=py)
-            ent_out_values[idx][-1][n - 1].insert(0, '0')
-            tk.CTkLabel(frm_out_text[idx][-1], text='T' + str(n)).pack(side=tk.LEFT, padx=px, pady=py)
+        self.frm_btn_apply_complexes = tk.CTkFrame(self.frm_complexes_base)
+        self.frm_btn_apply_complexes.pack()
+        self.btn_apply_complexes = tk.CTkButton(self.frm_btn_apply_complexes, text='Применить',
+                                                command=self.init_interactions)
+        self.btn_apply_complexes.pack()
 
-            interactions_with_prob[idx] = interactions_with_prob.setdefault(idx, 1) + 1
+    def add_complex(self, idx):
+        self.frm_out_text[idx].append(tk.CTkFrame(self.frm_out[idx]))
+        self.frm_out_text[idx][-1].pack()
 
-        btn_add_complex = [tk.CTkButton(frm_inp_btn[i], text='Добавить', command=partial(add_complex, i)) for i in
-                           range(m)]
-        for i in range(m):
-            btn_add_complex[i].pack(side=tk.TOP)
+        self.ent_out_values[idx].append([tk.CTkEntry(self.frm_out_text[idx][-1], width=1) for j in range(self.n)])
+        for j in range(self.n - 1):
+            self.ent_out_values[idx][-1][j].pack(side=tk.LEFT, padx=self.px, pady=self.py)
+            self.ent_out_values[idx][-1][j].insert(0, '0')
+            tk.CTkLabel(self.frm_out_text[idx][-1], text='T' + str(j + 1) + '+').pack(side=tk.LEFT, padx=self.px,
+                                                                                      pady=self.py)
+        self.ent_out_values[idx][-1][self.n - 1].pack(side=tk.LEFT, padx=self.px, pady=self.py)
+        self.ent_out_values[idx][-1][self.n - 1].insert(0, '0')
+        tk.CTkLabel(self.frm_out_text[idx][-1], text='T' + str(self.n)).pack(side=tk.LEFT, padx=self.px, pady=self.py)
 
-        def init_interactions():
+        self.interactions_with_prob[idx] = self.interactions_with_prob.setdefault(idx, 1) + 1
 
-            interactions = [(Interaction(
-                inp_arg=np.array([int(ent_inp_values[i][j].get()) for j in range(n)]),
-                out_arg=np.array(
-                    [[int(ent_out_values[i][k][j].get()) for j in range(n)] for k in range(len(ent_out_values[i]))])
-            )) for i in range(m)]
+    def init_interactions(self):
+        self.interactions = [(Interaction(
+            inp_arg=np.array([int(self.ent_inp_values[i][j].get()) for j in range(self.n)]),
+            out_arg=np.array(
+                [[int(self.ent_out_values[i][k][j].get()) for j in range(self.n)] for k in
+                 range(len(self.ent_out_values[i]))])
+        )) for i in range(self.m)]
 
-            frm_params_base = tk.CTkFrame(frm_main)
-            frm_params_base.grid(row=2, column=0, sticky=tk.NSEW)
+        self.frm_params_base = tk.CTkFrame(self)
+        self.frm_params_base.grid(row=2, column=0, sticky=tk.NSEW)
 
-            # frm_params = VerticalScrolledFrame(frm_params_base)
-            frm_params = tk.CTkScrollableFrame(frm_params_base, width=500, height=100)
-            frm_params.configure(width=max(n, m) * 60)
-            frm_params.pack(side=tk.TOP, expand=True, pady=1)
+        self.frm_params = tk.CTkScrollableFrame(self.frm_params_base, width=500, height=100)
+        self.frm_params.configure(width=max(self.n, self.m) * 60)
+        self.frm_params.pack(side=tk.TOP, expand=True, pady=1)
 
-            frm_init_values = tk.CTkFrame(frm_params)
-            frm_lam_base = tk.CTkFrame(frm_params)
-            frm_lam = [tk.CTkFrame(frm_lam_base) for i in range(m)]
-            frm_prob = {key: tk.CTkFrame(frm_params) for key in interactions_with_prob}
-            frm_time = tk.CTkFrame(frm_params)
-            frm_count = tk.CTkFrame(frm_params)
-            frm_count_draw = tk.CTkFrame(frm_params)
+        self.frm_init_values = tk.CTkFrame(self.frm_params)
+        self.frm_lam_base = tk.CTkFrame(self.frm_params)
+        self.frm_lam = [tk.CTkFrame(self.frm_lam_base) for i in range(self.m)]
+        self.frm_prob = {key: tk.CTkFrame(self.frm_params) for key in self.interactions_with_prob}
+        self.frm_time = tk.CTkFrame(self.frm_params)
+        self.frm_count = tk.CTkFrame(self.frm_params)
+        self.frm_count_draw = tk.CTkFrame(self.frm_params)
 
-            frm_init_values.pack()
-            frm_lam_base.pack()
-            for el in frm_lam:
-                el.pack()
-            for el in frm_prob.values():
-                el.pack()
-            frm_time.pack()
-            frm_count.pack()
-            frm_count_draw.pack()
+        self.frm_init_values.pack()
+        self.frm_lam_base.pack()
+        for el in self.frm_lam:
+            el.pack()
+        for el in self.frm_prob.values():
+            el.pack()
+        self.frm_time.pack()
+        self.frm_count.pack()
+        self.frm_count_draw.pack()
 
-            ent_init_values = [tk.CTkEntry(frm_init_values, width=8) for i in range(n)]
-            ent_lam = [tk.CTkEntry(frm_lam[i], width=8) for i in range(m)]
-            ent_prob = {key: [tk.CTkEntry(frm_prob[key], width=3) for i in range(count)]
-                        for key, count in interactions_with_prob.items()}
+        self.ent_init_values = [tk.CTkEntry(self.frm_init_values, width=8) for i in range(self.n)]
+        self.ent_lam = [tk.CTkEntry(self.frm_lam[i], width=8) for i in range(self.m)]
+        self.ent_prob = {key: [tk.CTkEntry(self.frm_prob[key], width=3) for i in range(count)]
+                         for key, count in self.interactions_with_prob.items()}
 
-            for i, el in enumerate(ent_init_values):
-                tk.CTkLabel(frm_init_values, text='T' + str(i + 1) + ' ').pack(side=tk.LEFT)
+        for i, el in enumerate(self.ent_init_values):
+            tk.CTkLabel(self.frm_init_values, text='T' + str(i + 1) + ' ').pack(side=tk.LEFT)
+            el.pack(side=tk.LEFT)
+
+        for i, el in enumerate(self.ent_lam):
+            tk.CTkLabel(self.frm_lam[i], text='lam' + str(i + 1) + '=').pack(side=tk.LEFT)
+            el.pack(side=tk.LEFT)
+
+        for key, ent in self.ent_prob.items():
+            for i, el in enumerate(ent):
+                tk.CTkLabel(self.frm_prob[key], text='p' + str(key + 1) + str(i + 1) + '=').pack(side=tk.LEFT)
                 el.pack(side=tk.LEFT)
 
-            for i, el in enumerate(ent_lam):
-                tk.CTkLabel(frm_lam[i], text='lam' + str(i + 1) + '=').pack(side=tk.LEFT)
-                el.pack(side=tk.LEFT)
+        self.ent_time = tk.CTkEntry(self.frm_time, width=4)
+        self.ent_count = tk.CTkEntry(self.frm_count, width=4)
+        self.ent_count_draw = tk.CTkEntry(self.frm_count_draw, width=4)
 
-            for key, ent in ent_prob.items():
-                for i, el in enumerate(ent):
-                    tk.CTkLabel(frm_prob[key], text='p' + str(key + 1) + str(i + 1) + '=').pack(side=tk.LEFT)
-                    el.pack(side=tk.LEFT)
+        tk.CTkLabel(self.frm_time, text='T=').pack(side=tk.LEFT)
+        self.ent_time.pack(side=tk.LEFT)
 
-            ent_time = tk.CTkEntry(frm_time, width=4)
-            ent_count = tk.CTkEntry(frm_count, width=4)
-            ent_count_draw = tk.CTkEntry(frm_count_draw, width=4)
+        tk.CTkLabel(self.frm_count, text='N=').pack(side=tk.LEFT)
+        self.ent_count.pack(side=tk.LEFT)
 
-            tk.CTkLabel(frm_time, text='T=').pack(side=tk.LEFT)
-            ent_time.pack(side=tk.LEFT)
+        tk.CTkLabel(self.frm_count_draw, text='M=').pack(side=tk.LEFT)
+        self.ent_count_draw.pack(side=tk.LEFT)
 
-            tk.CTkLabel(frm_count, text='N=').pack(side=tk.LEFT)
-            ent_count.pack(side=tk.LEFT)
+        tk.CTkButton(self.frm_params_base, text='Рассчитать', command=self.init_params).pack()
 
-            tk.CTkLabel(frm_count_draw, text='M=').pack(side=tk.LEFT)
-            ent_count_draw.pack(side=tk.LEFT)
+    def init_params(self):
+        try:
+            self.init_values = np.array([int(self.ent_init_values[i].get()) for i in range(self.n)])
+            self.lam = np.array([float(self.ent_lam[i].get()) for i in range(self.m)])
+            self.time = int(self.ent_time.get())
+            self.probabilities = {num: np.array(list(map(lambda x: float(x.get()), values))) for num, values in
+                                  self.ent_prob.items()}
+            self.count = int(self.ent_count.get())
+            self.count_draw = int(self.ent_count_draw.get())
+        except Exception as ex:
+            print(ex)
+            return
 
-            def init_params():
+        if any([False if abs(sum(val) - 1) < 1e-8 else True for val in self.probabilities.values()]):
+            return
+        else:
+            for num, arr in self.probabilities.items():
+                self.interactions[num].add_probabilities(arr)
 
-                try:
-                    init_values = np.array([int(ent_init_values[i].get()) for i in range(n)])
-                    lam = np.array([float(ent_lam[i].get()) for i in range(m)])
-                    time = int(ent_time.get())
-                    probabilities = {num: np.array(list(map(lambda x: float(x.get()), values))) for num, values in
-                                     ent_prob.items()}
-                    count = int(ent_count.get())
-                    count_draw = int(ent_count_draw.get())
-                except Exception as ex:
-                    print(ex)
-                    return
+        self.mean, self.samples, self.trajectories_draw = modeling(self.interactions, self.init_values, self.lam,
+                                                                   self.time,
+                                                                   self.n, self.m, self.count, self.count_draw)
+        self.bins = int(1 + 3.32 * np.log10(self.count))
 
-                if any([False if abs(sum(val) - 1) < 1e-8 else True for val in probabilities.values()]):
-                    return
-                else:
-                    for num, arr in probabilities.items():
-                        interactions[num].add_probabilities(arr)
+        self.combobox_var = tk.StringVar(value='T1')
+        self.switch_var = tk.StringVar(value="trajectory")
 
-                mean, samples, trajectories_draw = modeling(interactions, init_values, lam, time,
-                                                            n, m, count, count_draw)
-                bins = int(1 + 3.32 * np.log10(count))
+        self.frm_plot_base = tk.CTkFrame(self)
+        self.frm_plot_switch = tk.CTkFrame(self.frm_plot_base)
+        self.frm_plot = tk.CTkFrame(self.frm_plot_base)
 
-                combobox_var = tk.StringVar(value='T1')
-                switch_var = tk.StringVar(value="trajectory")
+        self.fig = Figure(figsize=(5, 5), dpi=100)
+        self.canvas = FigureCanvasTkAgg(self.fig, master=self.frm_plot)
+        self.change_plot()
 
-                frm_plot_base = tk.CTkFrame(frm_main)
-                frm_plot_switch = tk.CTkFrame(frm_plot_base)
-                frm_plot = tk.CTkFrame(frm_plot_base)
+        tk.CTkLabel(self.frm_plot_switch, text='Диаграмма').pack(side=tk.LEFT)
+        self.swt_plot = tk.CTkSwitch(self.frm_plot_switch,
+                                     onvalue="trajectory", offvalue="diagram",
+                                     text='Траектории', variable=self.switch_var,
+                                     command=self.change_plot)
 
-                fig = Figure(figsize=(5, 5), dpi=100)
-                # canvas = FigureCanvasTkAgg(fig, master=frm_plot)
-                canvas = MyCanvas(fig, frm_plot, mean, samples, trajectories_draw,
-                                  switch_var.get(), int(combobox_var.get()[-1]) - 1, time, count_draw, bins)
+        self.swt_plot.pack(side=tk.LEFT)
 
-                tk.CTkLabel(frm_plot_switch, text='Диаграмма').pack(side=tk.LEFT)
-                swt_plot = tk.CTkSwitch(frm_plot_switch,
-                                        onvalue="trajectory", offvalue="diagram",
-                                        text='Траектории', variable=switch_var,
-                                        command=lambda: canvas.change_plot(mean, samples, trajectories_draw,
-                                                                           switch_var.get(),
-                                                                           int(combobox_var.get()[-1]) - 1,
-                                                                           time, count_draw, bins)
-                                        )
-                swt_plot.pack(side=tk.LEFT)
+        self.cmb_type = tk.CTkComboBox(self.frm_plot_switch,
+                                       values=['T' + str(i + 1) for i in range(self.n)],
+                                       variable=self.combobox_var,
+                                       command=self.change_plot)
+        self.cmb_type.pack(side=tk.LEFT)
 
-                cmb_type = tk.CTkComboBox(frm_plot_switch,
-                                          values=['T' + str(i + 1) for i in range(n)],
-                                          variable=combobox_var,
-                                          command=lambda x: canvas.change_plot(mean, samples, trajectories_draw,
-                                                                               switch_var.get(),
-                                                                               int(combobox_var.get()[-1]) - 1,
-                                                                               time, count_draw, bins)
-                                          )
-                cmb_type.pack(side=tk.LEFT)
+        self.frm_plot_switch.pack()
 
-                frm_plot_switch.pack()
-                df_chi2, df_intervals = calculate_chi2(samples, bins, n, count)
+        self.df_chi2, self.df_intervals = calculate_chi2(self.samples, self.bins, self.n, self.count)
 
-                def show_statistics():
-                    frm = tk.CTkToplevel()
-                    frm.title('statistics')
+        tk.CTkButton(self.frm_plot_switch, text='Статистика', command=self.show_statistics).pack(side=tk.RIGHT)
+        self.frm_plot.pack(fill=tk.BOTH, expand=True)
 
-                    tbv = tk.CTkTabview(frm)
-                    tbv.pack()
-                    tbv.add('chi2')
-                    for i in range(n):
-                        tbv.add('T' + str(i + 1))
+        self.toolbar = NavigationToolbar2Tk(self.canvas, self.frm_plot)
+        self.toolbar.update()
 
-                    # table = Table(tbv.tab('chi2'), dataframe=df_chi2,
-                    #            showtoolbar=True, showstatusbar=True)
-                    # table.show()
+        self.canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
 
-                    # frm_chi2 = tk.CTkFrame(frm)
-                    # frm_chi2.grid(row=0, column=0, columnspan=2)
-                    # pt = Table(frm_chi2, dataframe=df_chi2,
-                    #            showtoolbar=True, showstatusbar=True)
-                    # pt.show()
-                    # r = 1
-                    # c = 0
-                    # for i in range(n):
-                    #     frm_label = tk.CTkFrame(frm)
-                    #     frm_label.grid(row=r, column=c)
-                    #     tk.CTkLabel(frm_label, text='T' + str((r - 1) * 2 + c + 1)).pack()
-                    #     frm_temp = tk.CTkFrame(frm)
-                    #     frm_temp.grid(row=r + 1, column=c)
-                    #     pt = Table(frm_temp, dataframe=df_intervals[i],
-                    #                showtoolbar=True, showstatusbar=True)
-                    #     pt.show()
-                    #     c += 1
-                    #     if c > 2:
-                    #         c = 0
-                    #         r += 1
+        self.frm_plot_base.grid(row=0, column=1, rowspan=3, sticky=tk.NSEW)
 
-                    frm.mainloop()
+    def change_plot(self, arg=None):
+        self.fig.clf()
+        plot = self.fig.add_subplot()
+        idx = int(self.combobox_var.get()[-1]) - 1
+        if self.switch_var.get() == 'diagram':
+            plot.hist(self.samples[:, idx],
+                      bins=self.bins,
+                      range=(self.samples[:, idx].min(), self.samples[:, idx].max()),
+                      density='True',
+                      color='blue')
+            grid = np.arange(-3, 3, 0.1)
+            plot.plot(grid, norm.pdf(grid, 0, 1), color='black', linewidth=3.0)
+        elif self.switch_var.get() == 'trajectory':
+            plot.plot(np.linspace(0, self.time, self.time), self.mean[:, idx], color='red', linewidth=5,
+                      zorder=self.count_draw + 1, linestyle='--')
+            for tr in self.trajectories_draw:
+                plot.plot(tr.time, tr.track[:, idx], linewidth=2)
+        else:
+            return
+        self.canvas.draw()
 
-                tk.CTkButton(frm_plot_switch, text='Статистика', command=show_statistics).pack(side=tk.RIGHT)
-                frm_plot.pack(fill=tk.BOTH, expand=True)
+    def show_statistics(self):
+        frm = tk.CTkToplevel()
+        frm.title('statistics')
 
-                toolbar = NavigationToolbar2Tk(canvas, frm_plot)
-                toolbar.update()
+        tbv = tk.CTkTabview(frm)
+        tbv.pack()
+        tbv.add('chi2')
+        for i in range(self.n):
+            tbv.add('T' + str(i + 1))
 
-                canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+        # table = Table(tbv.tab('chi2'), dataframe=df_chi2,
+        #            showtoolbar=True, showstatusbar=True)
+        # table.show()
 
-                frm_plot_base.grid(row=0, column=1, rowspan=3, sticky=tk.NSEW)
+        # frm_chi2 = tk.CTkFrame(frm)
+        # frm_chi2.grid(row=0, column=0, columnspan=2)
+        # pt = Table(frm_chi2, dataframe=df_chi2,
+        #            showtoolbar=True, showstatusbar=True)
+        # pt.show()
+        # r = 1
+        # c = 0
+        # for i in range(n):
+        #     frm_label = tk.CTkFrame(frm)
+        #     frm_label.grid(row=r, column=c)
+        #     tk.CTkLabel(frm_label, text='T' + str((r - 1) * 2 + c + 1)).pack()
+        #     frm_temp = tk.CTkFrame(frm)
+        #     frm_temp.grid(row=r + 1, column=c)
+        #     pt = Table(frm_temp, dataframe=df_intervals[i],
+        #                showtoolbar=True, showstatusbar=True)
+        #     pt.show()
+        #     c += 1
+        #     if c > 2:
+        #         c = 0
+        #         r += 1
 
-            tk.CTkButton(frm_params_base, text='Рассчитать', command=init_params).pack()
-
-        frm_btn_apply_complexes = tk.CTkFrame(frm_complexes_base)
-        frm_btn_apply_complexes.pack()
-        btn_apply_complexes = tk.CTkButton(frm_btn_apply_complexes, text='Применить', command=init_interactions)
-        btn_apply_complexes.pack()
-
-    btn_apply_sizes = tk.CTkButton(frm_sizes, text='Применить',
-                                   command=lambda: init_frm_complexes(ent_n.get(), ent_m.get()))
-
-    btn_apply_sizes.grid(row=2, column=1, columnspan=2)
-
-    frm_main.mainloop()
+        frm.mainloop()
 
 
-if __name__ == '__main__':
-    main()
+if __name__ == "__main__":
+    app = App()
+    app.mainloop()
