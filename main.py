@@ -168,6 +168,15 @@ def calculate_chi2(sample: numpy.typing.NDArray, bins, n, N):
     return pd.DataFrame(table_chi2, columns=['Статистика', 'Квантиль']), df_intervals
 
 
+def show_exception(exc: Exception | str):
+    frm_ex = tk.CTkToplevel()
+    frm_ex.title('error')
+    tk.CTkLabel(frm_ex, text='error: '+str(exc)).pack(ipadx=10, ipady=10, padx=10, pady=10)
+    frm_ex.resizable(width=False, height=False)
+    frm_ex.attributes("-topmost", True)
+    frm_ex.mainloop()
+
+
 class App(tk.CTk):
     def __init__(self):
         super().__init__()
@@ -255,6 +264,7 @@ class App(tk.CTk):
             self.n = int(self.ent_n.get())
             self.m = int(self.ent_m.get())
         except Exception as ex:
+            show_exception(ex)
             return
 
         self.interactions_with_prob = {}
@@ -335,12 +345,16 @@ class App(tk.CTk):
         self.interactions_with_prob[idx] = self.interactions_with_prob.setdefault(idx, 1) + 1
 
     def init_interactions(self):
-        self.interactions = [(Interaction(
-            inp_arg=np.array([int(self.ent_inp_values[i][j].get()) for j in range(self.n)]),
-            out_arg=np.array(
-                [[int(self.ent_out_values[i][k][j].get()) for j in range(self.n)] for k in
-                 range(len(self.ent_out_values[i]))])
-        )) for i in range(self.m)]
+        try:
+            self.interactions = [(Interaction(
+                inp_arg=np.array([int(self.ent_inp_values[i][j].get()) for j in range(self.n)]),
+                out_arg=np.array(
+                    [[int(self.ent_out_values[i][k][j].get()) for j in range(self.n)] for k in
+                     range(len(self.ent_out_values[i]))])
+            )) for i in range(self.m)]
+        except Exception as ex:
+            show_exception(ex)
+            return
 
         self.frm_params_base = tk.CTkFrame(self)
         self.frm_params_base.grid(row=2, column=0, sticky=tk.NSEW)
@@ -410,18 +424,24 @@ class App(tk.CTk):
             self.count = int(self.ent_count.get())
             self.count_draw = int(self.ent_count_draw.get())
         except Exception as ex:
-            print(ex)
+            show_exception(ex)
             return
 
         if any([False if abs(sum(val) - 1) < 1e-8 else True for val in self.probabilities.values()]):
+            show_exception('the sum of the probabilities is not equal to one')
             return
         else:
             for num, arr in self.probabilities.items():
                 self.interactions[num].add_probabilities(arr)
 
-        self.mean, self.samples, self.trajectories_draw = modeling(self.interactions, self.init_values, self.lam,
-                                                                   self.time,
-                                                                   self.n, self.m, self.count, self.count_draw)
+        try:
+            self.mean, self.samples, self.trajectories_draw = modeling(self.interactions, self.init_values, self.lam,
+                                                                       self.time,
+                                                                       self.n, self.m, self.count, self.count_draw)
+        except Exception as ex:
+            show_exception(str(ex)+' in modeling')
+            return
+
         self.bins = int(1 + 3.32 * np.log10(self.count))
 
         self.combobox_var = tk.StringVar(value='T1')
@@ -451,7 +471,11 @@ class App(tk.CTk):
 
         self.frm_plot_switch.pack()
 
-        self.df_chi2, self.df_intervals = calculate_chi2(self.samples, self.bins, self.n, self.count)
+        try:
+            self.df_chi2, self.df_intervals = calculate_chi2(self.samples, self.bins, self.n, self.count)
+        except Exception as ex:
+            show_exception(str(ex) + ' in calculate_chi2')
+            return
 
         tk.CTkButton(self.frm_plot_switch, text='Статистика', command=self.show_statistics).pack(side=tk.RIGHT)
         self.frm_plot.pack(fill=tk.BOTH, expand=True)
@@ -523,5 +547,6 @@ class App(tk.CTk):
 
 
 if __name__ == "__main__":
-    app = App()
-    app.mainloop()
+        app = App()
+        app.mainloop()
+
