@@ -1,17 +1,19 @@
 import customtkinter as tk
-import typing
-from functools import partial
 import numpy as np
-import sympy as sp
-import numpy.typing
-from numpy.random import exponential, rand
+from typing import List
+from functools import partial
 import pandas as pd
+from sympy import Symbol, prod, diff
+from numpy.typing import NDArray
+from numpy.random import exponential, rand
+from pandas import DataFrame
 from scipy.stats import norm, chi2
 from scipy.integrate import odeint
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import (FigureCanvasTkAgg, NavigationToolbar2Tk)
 from pandastable import Table
-from tkinter.font import Font
+from scipy.stats import kstest, kstwo, gaussian_kde
+import mpl_toolkits.axisartist as axisartist
 
 tk.set_appearance_mode("Dark")  # Modes: "System" (standard), "Dark", "Light"
 tk.set_default_color_theme("green")  # Themes: "blue" (standard), "green", "dark-blue"
@@ -36,7 +38,7 @@ class Interaction:
         self.prob_intervals = [1, ]
         self.prob = [1, ]
 
-    def add_probabilities(self, prob_arg: numpy.typing.NDArray):
+    def add_probabilities(self, prob_arg: NDArray):
         self.prob = prob_arg
         self.prob_intervals = np.array([prob_arg[0]])
         for el in prob_arg[1:]:
@@ -57,14 +59,18 @@ class Trajectory:
         self.time = time_arg
 
 
-def create_trajectory(inter: typing.List[Interaction], init_val, lam, time, m):
+def create_trajectory(inter: List[Interaction], init_val, lam, time, m):
     trajectory = np.array([init_val])
     time_array = np.zeros(1)
     while time_array[-1] < time:
         temp_lam = [inter[i].inp * trajectory[-1] for i in range(m)]
-        tau = pd.Series(
-            [exponential(1 / (np.prod(temp_lam[i][temp_lam[i] > 0]) * lam[i]))] for i in range(m)).sort_values()
-        for num, t in tau.items():
+        # tau = pd.Series(
+        #     [exponential(1 / (np.prod(temp_lam[i][temp_lam[i] > 0]) * lam[i]))] for i in range(m)).sort_values()
+        tau = sorted(
+                [(i, exponential(1 / (np.prod(temp_lam[i][temp_lam[i] > 0]) * lam[i]))) for i in range(m)],
+                key=lambda el: el[1])
+
+        for num, t in tau:
             if np.greater_equal(trajectory[-1], inter[num].inp).all():
                 trajectory = np.append(trajectory, [trajectory[-1] - inter[num].inp + inter[num].choose_out()], axis=0)
                 time_array = np.append(time_array, time_array[-1] + t)
@@ -72,6 +78,7 @@ def create_trajectory(inter: typing.List[Interaction], init_val, lam, time, m):
         else:
             trajectory = np.append(trajectory, [trajectory[-1]], axis=0)
             time_array = np.append(time_array, time_array[-1] + 1)
+            break
 
     trajectory[-1] = trajectory[-2]
     time_array[-1] = time
@@ -79,17 +86,18 @@ def create_trajectory(inter: typing.List[Interaction], init_val, lam, time, m):
     return Trajectory(trajectory, time_array)
 
 
-def calculate_expected_value(inter: typing.List[Interaction], init_val, lam, time, n, m):
-    s = [sp.Symbol('s' + str(i)) for i in range(n)]
+def calculate_expected_value(inter: List[Interaction], init_val, lam, time, n, m):
+    s = [Symbol('s' + str(i)) for i in range(n)]
     arg_for_subs = [(s[i], 1) for i in range(n)]
     components = [sum(
-        [sp.prod(
+        [prod(
             [s[j] ** inter[i].out[k][j] for j in range(n)]) * inter[i].prob[k] for k in range(len(inter[i].out))]) -
-                  sp.prod(
+                  prod(
                       [s[j] ** inter[i].inp[j] for j in range(n)]) for i in range(m)]
+
     derivatives = [inter[i].inp.copy() for i in range(m)]
 
-    diff_components = [[sp.diff(components[i], s[j]) for j in range(n)] for i in range(m)]
+    diff_components = [[diff(components[i], s[j]) for j in range(n)] for i in range(m)]
     diff_derivatives = [[derivatives[j].copy() for j in range(m)] for i in range(n)]
 
     for i in range(n):
@@ -111,10 +119,10 @@ def calculate_expected_value(inter: typing.List[Interaction], init_val, lam, tim
             for i in range(m)]) for j in range(n)]
         return res
 
-    return odeint(system, init_val, np.linspace(0, time, time), args=(lam,))
+    return odeint(system, init_val, np.linspace(0, time, time*4), args=(lam,))
 
 
-def modeling(inter: typing.List[Interaction], init_val, lam, time, n, m, N, M):
+def modeling(inter: List[Interaction], init_val, lam, time, n, m, N, M):
     samples = np.empty((N, n))
     try:
         trajectories_draw = [create_trajectory(inter, init_val, lam, time, m) for i in range(M)]
@@ -127,15 +135,14 @@ def modeling(inter: typing.List[Interaction], init_val, lam, time, n, m, N, M):
         samples[i] = create_trajectory(inter, init_val, lam, time, m).track[-1]
 
     mean = calculate_expected_value(inter, init_val, lam, time, n, m)
-    std = samples.std(axis=0)
-
-    for i in range(n):
-        samples[:, i] = (samples[:, i] - mean[-1][i]) / (std[i] + 1e-10)
+    samples -= mean[-1]
+    std = np.sqrt((samples ** 2).sum(axis=0)/N) + 1e-8
+    samples = samples / std
 
     return mean, samples, trajectories_draw
 
 
-def calculate_chi2(sample: numpy.typing.NDArray, bins, n, N):
+def calculate_chi2(sample: NDArray, bins, n, N):
     intervals = [np.empty(bins + 1) for i in range(n)]
     emp_frequencies = [np.empty(bins) for i in range(n)]
 
@@ -179,10 +186,21 @@ def calculate_chi2(sample: numpy.typing.NDArray, bins, n, N):
         table_chi2[i, 0] = (((emp_frequencies[i] - N * thr_frequencies[i]) ** 2) / (N * thr_frequencies[i])).sum()
         table_chi2[i, 1] = chi2(emp_frequencies[i].shape[0] - 1).ppf(0.95)
 
-    df_intervals = [pd.DataFrame({'Эмперические': emp_frequencies[i], 'Теоретические': thr_frequencies[i] * N,
+    df_intervals = [DataFrame({'Эмперические': emp_frequencies[i], 'Теоретические': thr_frequencies[i] * N,
                                   'left': intervals[i][:-1], 'right': intervals[i][1:]}) for i in range(n)]
 
-    return pd.DataFrame(table_chi2, columns=['Статистика', 'Квантиль']), df_intervals
+    return DataFrame(table_chi2, columns=['Статистика', 'Квантиль']), df_intervals
+
+
+def calculate_statistic(sample: NDArray, n, N):
+    df = pd.DataFrame([kstest(sample[:, i], 'norm', args=(0, 1)) for i in range(n)])
+    df['cr_value'] = kstwo(N).isf(0.05)
+    df['cr_pv'] = 0.05
+    df = df[['statistic', 'cr_value', 'pvalue', 'cr_pv']]
+    df.columns = ['Стат', 'Кр знач стат', 'p-value', 'Кр p-value']
+    return df
+
+
 
 
 def show_exception(exc: Exception | str):
@@ -281,8 +299,9 @@ class App(tk.CTk):
         self.canvas = None
         self.swt_plot = None
         self.cmb_type = None
-        self.df_chi2 = None
-        self.df_intervals = None
+        # self.df_chi2 = None
+        self.df_stat = None
+        # self.df_intervals = None
         self.toolbar = None
 
     def init_frm_complexes(self):
@@ -497,7 +516,7 @@ class App(tk.CTk):
         self.bins = int(1 + 3.32 * np.log10(self.count))
 
         self.combobox_var = tk.StringVar(value='T1')
-        self.switch_var = tk.StringVar(value="trajectory")
+        self.switch_var = tk.StringVar(value="d")
 
         self.frm_plot_base = tk.CTkFrame(self)
         self.frm_plot_switch = tk.CTkFrame(self.frm_plot_base, border_width=border_width_frm,
@@ -505,14 +524,15 @@ class App(tk.CTk):
                                            corner_radius=corner_radius_frm)
         self.frm_plot = tk.CTkFrame(self.frm_plot_base)
 
-        self.fig = Figure(figsize=(5, 5), dpi=100)
+        self.fig = Figure(figsize=(1, 1), dpi=100)
+        self.fig.subplots_adjust(top=0.96, bottom=0.068, right=0.999, left=0.068, wspace=0, hspace=0)
         self.canvas = FigureCanvasTkAgg(self.fig, master=self.frm_plot)
         self.change_plot()
 
-        tk.CTkLabel(self.frm_plot_switch, text='Диаграмма  ', font=font_arg).pack(side=tk.LEFT, padx=20)
+        tk.CTkLabel(self.frm_plot_switch, text='Траектории', font=font_arg).pack(side=tk.LEFT, padx=20)
         self.swt_plot = tk.CTkSwitch(self.frm_plot_switch,
-                                     onvalue="trajectory", offvalue="diagram",
-                                     text='Траектории', variable=self.switch_var,
+                                     onvalue="d", offvalue="t",
+                                     text='Диаграмма', variable=self.switch_var,
                                      command=self.change_plot,
                                      font=font_arg)
 
@@ -528,9 +548,10 @@ class App(tk.CTk):
         self.frm_plot_switch.pack(padx=padx_frm, pady=1)
 
         try:
-            self.df_chi2, self.df_intervals = calculate_chi2(self.samples, self.bins, self.n, self.count)
+            # self.df_chi2, self.df_intervals = calculate_chi2(self.samples, self.bins, self.n, self.count)
+            self.df_stat = calculate_statistic(self.samples, self.n, self.count)
         except Exception as ex:
-            show_exception(str(ex) + ' in calculate_chi2')
+            show_exception(str(ex) + ' in calculate_statistic')
             return
 
         tk.CTkButton(self.frm_plot_switch, text='Статистика',
@@ -551,53 +572,77 @@ class App(tk.CTk):
 
     def change_plot(self, arg=None):
         self.fig.clf()
+        # plot = self.fig.add_subplot()
+
+        # plot = axisartist.Subplot(self.fig, 111)
+        # self.fig.add_axes(plot)
+        # plot.axis["bottom"].set_axisline_style("-|>", size=1.5)
+        # plot.axis["left"].set_axisline_style("-|>", size=1.5)
+
         plot = self.fig.add_subplot()
+
         idx = int(self.combobox_var.get()[-1]) - 1
-        if self.switch_var.get() == 'diagram':
+        if self.switch_var.get() == 'd':
+            try:
+                kde_pdf = gaussian_kde(self.samples[:, idx], bw_method=0.3).pdf
+            except Exception as ex:
+                show_exception(str(ex) + ' in gaussian_kde')
+                return
+
             plot.hist(self.samples[:, idx],
                       bins=self.bins,
                       range=(self.samples[:, idx].min(), self.samples[:, idx].max()),
                       density='True',
-                      color='blue')
-            grid = np.arange(-3, 3, 0.1)
-            plot.plot(grid, norm.pdf(grid, 0, 1), color='black', linewidth=3.0)
-            plot.grid()
-        elif self.switch_var.get() == 'trajectory':
-            plot.plot(np.linspace(0, self.time, self.time), self.mean[:, idx], color='red', linewidth=5,
-                      zorder=self.count_draw + 1, linestyle='--', label='expected value')
+                      color='blue',
+                      label='эмп. распр.')
+            grid = np.arange(self.samples[:, idx].min(), self.samples[:, idx].max(), 0.1)
+            plot.plot(grid, norm.pdf(grid, 0, 1), color='black', linewidth=3.0, label=r'плот. распр. $N(0, 1)$')
+            plot.plot(grid, kde_pdf(grid), color='red', linewidth=3.0, linestyle='--', label='ЯОП')
+
+            plot.set_xlabel(r'Значения случайной величины $\xi(T)$',fontsize=17, fontweight ='regular', labelpad=7)
+            plot.set_ylabel(r'Плотность вероятности', fontsize=17, fontweight='regular', labelpad=7)
+            plot.set_title('Даиграмма распределения для Т' + str(idx+1), fontsize=17, fontweight='bold')
+            plot.legend(fontsize='xx-large')
+        else:
+            plot.plot(np.linspace(0, self.time, self.time*4), self.mean[:, idx], color='red', linewidth=5,
+                      zorder=self.count_draw + 1, linestyle='--', label=r'$A(t)$')
             for tr in self.trajectories_draw:
                 plot.plot(tr.time, tr.track[:, idx], linewidth=2)
+            plot.set_xlabel(r'$t$', fontsize=17, fontweight='regular', labelpad=3)
+            plot.set_ylabel(r'$\xi(t)$', fontsize=17, fontweight='regular', labelpad=3)
+            plot.set_title('Траектории для Т' + str(idx + 1), fontsize=17, fontweight='bold')
             plot.grid()
-            plot.legend()
-        else:
-            return
+            plot.legend(fontsize='xx-large')
+
         self.canvas.draw()
 
     def show_statistics(self):
         frm = tk.CTkToplevel()
         frm.title('statistics')
-        frm.geometry('400x280')
+        frm.geometry('350x100')
         frm.resizable(width=False, height=False)
         frm.attributes("-topmost", True)
 
-        frm_scroll_base = tk.CTkScrollableFrame(frm)
-        frm_scroll_base.pack(expand=True, fill=tk.BOTH)
-        frm_chi2 = tk.CTkFrame(frm_scroll_base)
-        table_chi2 = Table(frm_chi2, dataframe=self.df_chi2,
+        # frm_scroll_base = tk.CTkScrollableFrame(frm)
+        # frm_scroll_base.pack(expand=True, fill=tk.BOTH)
+        # frm_chi2 = tk.CTkFrame(frm_scroll_base)
+        frm_stat = tk.CTkFrame(frm)
+        table_stat = Table(frm_stat, dataframe=self.df_stat,
                            showtoolbar=False, showstatusbar=False)
-        frm_chi2.pack(expand=True, fill=tk.BOTH)
-        table_chi2.show()
+        # frm_chi2.pack(expand=True, fill=tk.BOTH)
+        frm_stat.pack(expand=True, fill=tk.BOTH)
+        table_stat.show()
 
-        for i in range(self.n):
-            frm_temp_tb = tk.CTkFrame(frm_scroll_base)
-            frm_temp_lb = tk.CTkFrame(frm_scroll_base)
-            label = tk.CTkLabel(frm_temp_lb, text='T' + str(i + 1), font=font_arg)
-            table = Table(frm_temp_tb, dataframe=self.df_intervals[i],
-                          showtoolbar=False, showstatusbar=False)
-            frm_temp_lb.pack(expand=True, fill=tk.BOTH)
-            frm_temp_tb.pack(expand=True, fill=tk.BOTH)
-            label.pack(expand=True, fill=tk.BOTH)
-            table.show()
+        # for i in range(self.n):
+        #     frm_temp_tb = tk.CTkFrame(frm_scroll_base)
+        #     frm_temp_lb = tk.CTkFrame(frm_scroll_base)
+        #     label = tk.CTkLabel(frm_temp_lb, text='T' + str(i + 1), font=font_arg)
+        #     table = Table(frm_temp_tb, dataframe=self.df_intervals[i],
+        #                   showtoolbar=False, showstatusbar=False)
+        #     frm_temp_lb.pack(expand=True, fill=tk.BOTH)
+        #     frm_temp_tb.pack(expand=True, fill=tk.BOTH)
+        #     label.pack(expand=True, fill=tk.BOTH)
+        #     table.show()
 
         frm.mainloop()
 
