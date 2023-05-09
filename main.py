@@ -1,10 +1,14 @@
 import customtkinter as tk
 from functools import partial
+
+import numpy as np
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import (FigureCanvasTkAgg, NavigationToolbar2Tk)
 from pandastable import Table
 from scipy.stats import gaussian_kde
 from datetime import datetime as dt
+from os import makedirs
+from os.path import isdir
 from calculations import *
 from statistics import *
 from design import *
@@ -97,10 +101,13 @@ class App(tk.CTk):
         self.count = None
         self.count_draw = None
         self.mean = None
+        self.samples_without_norm = None
         self.samples = None
         self.trajectories_draw = None
         self.bins = None
         self.ent_bins = None
+        self.bw = 0.3
+        self.ent_bw = None
         self.combobox_var = None
         self.switch_var = None
         self.frm_plot_base = None
@@ -108,12 +115,16 @@ class App(tk.CTk):
         self.frm_plot = None
         self.fig = None
         self.canvas = None
-        self.swt_plot = None
+        # self.swt_plot = None
+        self.cmb_plot = None
         self.cmb_type = None
         # self.df_chi2 = None
         self.df_stat = None
         # self.df_intervals = None
         self.toolbar = None
+        self.folder_name = 'noname'
+        self.frm_input = None
+        self.ent_input = None
 
     def init_frm_complexes(self):
         try:
@@ -296,6 +307,8 @@ class App(tk.CTk):
         tk.CTkButton(self.frm_params_base, text='Рассчитать', command=self.init_params, font=font_arg). \
             pack(pady=pady_btn)
 
+
+
     def init_params(self):
         try:
             self.init_values = np.array([int(self.ent_init_values[i].get()) for i in range(self.n)])
@@ -317,9 +330,11 @@ class App(tk.CTk):
                 self.interactions[num].add_probabilities(arr)
 
         try:
-            self.mean, self.samples, self.trajectories_draw = modeling(self.interactions, self.init_values, self.lam,
-                                                                       self.time,
-                                                                       self.n, self.m, self.count, self.count_draw)
+            self.mean, self.samples, self.trajectories_draw, self.samples_without_norm = modeling(
+                self.interactions,
+                self.init_values, self.lam,
+                self.time,
+                self.n, self.m, self.count, self.count_draw)
         except Exception as ex:
             show_exception(str(ex) + ' in modeling')
             return
@@ -327,7 +342,7 @@ class App(tk.CTk):
         self.bins = int(1 + 3.32 * np.log10(self.count))
 
         self.combobox_var = tk.StringVar(value='T1')
-        self.switch_var = tk.StringVar(value="d")
+        self.switch_var = tk.StringVar(value='Плотность распределения')
 
         self.frm_plot_base = tk.CTkFrame(self)
         self.frm_plot_switch = tk.CTkFrame(self.frm_plot_base, border_width=border_width_frm,
@@ -340,20 +355,27 @@ class App(tk.CTk):
         self.canvas = FigureCanvasTkAgg(self.fig, master=self.frm_plot)
         self.change_plot()
 
-        tk.CTkLabel(self.frm_plot_switch, text='Траектории', font=font_arg).pack(side=tk.LEFT, padx=20)
-        self.swt_plot = tk.CTkSwitch(self.frm_plot_switch,
-                                     onvalue="d", offvalue="t",
-                                     text='Диаграмма', variable=self.switch_var,
-                                     command=self.change_plot,
-                                     font=font_arg)
+        # tk.CTkLabel(self.frm_plot_switch, text='Траектории', font=font_arg).pack(side=tk.LEFT, padx=20)
+        # self.swt_plot = tk.CTkSwitch(self.frm_plot_switch,
+        #                              onvalue="d", offvalue="t",
+        #                              text='Диаграмма', variable=self.switch_var,
+        #                              command=self.change_plot,
+        #                              font=font_arg)
 
-        self.swt_plot.pack(side=tk.LEFT)
+        # self.swt_plot.pack(side=tk.LEFT)
+        self.cmb_plot = tk.CTkComboBox(self.frm_plot_switch,
+                                       values=['Плотность распределения', 'Функция распределения', 'Траектории'],
+                                       variable=self.switch_var,
+                                       command=self.change_plot,
+                                       font=font_arg)
 
         self.cmb_type = tk.CTkComboBox(self.frm_plot_switch,
                                        values=['T' + str(i + 1) for i in range(self.n)],
                                        variable=self.combobox_var,
                                        command=self.change_plot,
                                        font=font_arg)
+
+        self.cmb_plot.pack(side=tk.LEFT, padx=padx_btn)
         self.cmb_type.pack(side=tk.LEFT, padx=padx_btn)
 
         self.frm_plot_switch.pack(padx=padx_frm, pady=1)
@@ -368,7 +390,13 @@ class App(tk.CTk):
         self.ent_bins = tk.CTkEntry(self.frm_plot_switch, width=35)
         self.ent_bins.insert(0, str(self.bins))
         self.ent_bins.bind('<Return>', self.change_bins)
+
+        self.ent_bw = tk.CTkEntry(self.frm_plot_switch, width=45)
+        self.ent_bw.insert(0, str(self.bw))
+        self.ent_bw.bind('<Return>', self.change_bw)
+
         self.ent_bins.pack(side=tk.LEFT, padx=padx_btn)
+        self.ent_bw.pack(side=tk.LEFT, padx=padx_btn)
 
         tk.CTkButton(self.frm_plot_switch, text='Сохранить',
                      font=font_arg, command=self.save_samples).pack(side=tk.RIGHT, padx=padx_btn, pady=pady_btn)
@@ -402,9 +430,10 @@ class App(tk.CTk):
         plot = self.fig.add_subplot()
 
         idx = int(self.combobox_var.get()[-1]) - 1
-        if self.switch_var.get() == 'd':
+        plot_type = self.switch_var.get()[0]
+        if plot_type == 'П':
             try:
-                kde_pdf = gaussian_kde(self.samples[:, idx], bw_method=0.3).pdf
+                kde_pdf = gaussian_kde(self.samples[:, idx], bw_method=self.bw).pdf
             except Exception as ex:
                 show_exception(str(ex) + ' in gaussian_kde')
                 return
@@ -419,12 +448,12 @@ class App(tk.CTk):
             plot.plot(grid, norm.pdf(grid, 0, 1), color='black', linewidth=3.0, label=r'плот. распр. $N(0, 1)$')
             plot.plot(grid, kde_pdf(grid), color='red', linewidth=3.0, linestyle='--', label='ЯОП')
 
-            plot.set_xlabel(r'Значения случайной величины $\xi(T)$',fontsize=17, fontweight ='regular', labelpad=7)
+            plot.set_xlabel(r'Значения случайной величины $\xi(T)$', fontsize=17, fontweight='regular', labelpad=7)
             plot.set_ylabel(r'Плотность вероятности', fontsize=17, fontweight='regular', labelpad=7)
-            plot.set_title('Даиграмма распределения для Т' + str(idx+1), fontsize=17, fontweight='bold')
+            plot.set_title('Диаграмма распределения для Т' + str(idx + 1), fontsize=17, fontweight='bold')
             plot.legend(fontsize='xx-large')
-        else:
-            plot.plot(np.linspace(0, self.time, self.time*4), self.mean[:, idx], color='red', linewidth=5,
+        elif plot_type == 'Т':
+            plot.plot(np.linspace(0, self.time, self.time * 4), self.mean[:, idx], color='red', linewidth=5,
                       zorder=self.count_draw + 1, linestyle='--', label=r'$A(t)$')
             for tr in self.trajectories_draw:
                 plot.plot(tr.time, tr.track[:, idx], linewidth=2)
@@ -433,6 +462,17 @@ class App(tk.CTk):
             plot.set_title('Траектории для Т' + str(idx + 1), fontsize=17, fontweight='bold')
             plot.grid()
             plot.legend(fontsize='xx-large')
+        else:
+            x = np.sort(self.samples[:, idx])
+            y_emp = 1. * np.arange(self.count) / (self.count - 1)
+            y_thr = norm.cdf(x)
+            plot.plot(x, y_thr, linewidth=3, label=r'$F(x)$ для $N(0, 1)$')
+            plot.plot(x, y_emp, linewidth=3, label=r'$F_N(x)$')
+            plot.grid(axis='y')
+            plot.legend(fontsize='xx-large')
+            plot.set_xlabel(r'$x$', fontsize=17, fontweight='regular', labelpad=3)
+            plot.set_ylabel(r'$P(\xi<x)$', fontsize=17, fontweight='regular', labelpad=3)
+            plot.set_title('Функция распределения для Т' + str(idx + 1), fontsize=17, fontweight='bold')
 
         self.canvas.draw()
 
@@ -448,10 +488,127 @@ class App(tk.CTk):
             show_exception(str(ex) + 'in calculate_statistic')
         self.change_plot()
 
+    def change_bw(self, event=None):
+        try:
+            self.bw = float(self.ent_bw.get())
+        except Exception as ex:
+            show_exception(ex)
+            return
+        self.change_plot()
+
+    def set_folder_name(self):
+        name = self.ent_input.get()
+        if isdir('results/' + name):
+            show_exception('Folder with this name is already exist')
+            return
+
+        self.folder_name = name
+
+        folder = 'results/' + name
+        makedirs(folder)
+        self.frm_input.destroy()
+        with open(folder + '/parameters.txt', 'w+') as params_file:
+            params_file.write('interactions:\n')
+            for inter in self.interactions:
+                params_file.write(inter.inp.__str__() + ' -> ')
+                for el in inter.out:
+                    params_file.write(el.__str__() + ' ')
+                params_file.write('\n\n')
+            params_file.write('init values:\n')
+            params_file.write(self.init_values.__str__() + '\n\n')
+
+            params_file.write('lambda:\n')
+            params_file.write(self.lam.__str__() + '\n\n')
+
+            params_file.write('probabilities:\n')
+            for num, arr in self.probabilities.items():
+                params_file.write(str(num + 1) + ': ' + arr.__str__() + '\n')
+            params_file.write('\n')
+
+            params_file.write('T: ' + str(self.time) + '\n')
+            params_file.write('N: ' + str(self.count) + '\n')
+            params_file.write('bins: ' + str(self.bins) + '\n')
+            params_file.write('bw: ' + str(self.bw) + '\n\n')
+
+            params_file.write('mean_emp:\n')
+            params_file.write(self.samples_without_norm.mean(axis=0).__str__()+'\n\n')
+            params_file.write('mean_thr:\n')
+            params_file.write(self.mean[-1].__str__()+'\n\n')
+
+            params_file.write('std:\n')
+            params_file.write(self.samples_without_norm.std(axis=0).__str__()+'\n\n')
+
+        self.df_stat.to_excel(folder + '/statistics.xlsx')
+        np.savetxt(folder + '/samples.csv', self.samples_without_norm, fmt='%s')
+        np.savetxt(folder + '/samples_norm.csv', self.samples, fmt='%s')
+
+        folder += '/pictures'
+        makedirs(folder)
+
+        temp_fig = Figure(figsize=(10, 10), dpi=100)
+        temp_fig.subplots_adjust(top=0.98, bottom=0.08, right=0.98, left=0.08, wspace=0, hspace=0)
+
+        for idx in range(self.n):
+            plot = temp_fig.add_subplot()
+
+            kde_pdf = gaussian_kde(self.samples[:, idx], bw_method=self.bw).pdf
+            plot.hist(self.samples[:, idx],
+                      bins=self.bins,
+                      range=(self.samples[:, idx].min(), self.samples[:, idx].max()),
+                      density='True',
+                      color='blue',
+                      label='эмп. распр.')
+            grid = np.arange(self.samples[:, idx].min(), self.samples[:, idx].max(), 0.1)
+            plot.plot(grid, norm.pdf(grid, 0, 1), color='black', linewidth=3.0, label=r'плот. распр. $N(0, 1)$')
+            plot.plot(grid, kde_pdf(grid), color='red', linewidth=3.0, linestyle='--', label='ЯОП')
+
+            plot.set_xlabel(r'Значения случайной величины $\xi(T)$', fontsize=17, fontweight='regular', labelpad=7)
+            plot.set_ylabel(r'Плотность вероятности', fontsize=17, fontweight='regular', labelpad=7)
+            # plot.set_title('Диаграмма распределения для Т' + str(idx + 1), fontsize=17, fontweight='bold')
+            plot.legend(fontsize='xx-large')
+
+            temp_fig.savefig(fname=folder+'/T' + str(idx+1) + '_pdf.png')
+            temp_fig.clf()
+
+            plot = temp_fig.add_subplot()
+            plot.plot(np.linspace(0, self.time, self.time * 4), self.mean[:, idx], color='red', linewidth=5,
+                      zorder=self.count_draw + 1, linestyle='--', label=r'$A(t)$')
+            for tr in self.trajectories_draw:
+                plot.plot(tr.time, tr.track[:, idx], linewidth=2)
+            plot.set_xlabel(r'$t$', fontsize=17, fontweight='regular', labelpad=3)
+            plot.set_ylabel(r'$\xi(t)$', fontsize=17, fontweight='regular', labelpad=3)
+            # plot.set_title('Траектории для Т' + str(idx + 1), fontsize=17, fontweight='bold')
+            plot.grid()
+            plot.legend(fontsize='xx-large')
+
+            temp_fig.savefig(fname=folder + '/T' + str(idx+1) + '_trajectories.jpeg', format='jpeg')
+            temp_fig.clf()
+
+            plot = temp_fig.add_subplot()
+            x = np.sort(self.samples[:, idx])
+            y_emp = 1. * np.arange(self.count) / (self.count - 1)
+            y_thr = norm.cdf(x)
+            plot.plot(x, y_thr, linewidth=3, label=r'$F(x)$ для $N(0, 1)$')
+            plot.plot(x, y_emp, linewidth=3, label=r'$F_N(x)$')
+            plot.grid(axis='y')
+            plot.legend(fontsize='xx-large')
+            plot.set_xlabel(r'$x$', fontsize=17, fontweight='regular', labelpad=3)
+            plot.set_ylabel(r'$P(\xi<x)$', fontsize=17, fontweight='regular', labelpad=3)
+            # plot.set_title('Функция распределения для Т' + str(idx + 1), fontsize=17, fontweight='bold')
+
+            temp_fig.savefig(fname=folder + '/T' + str(idx + 1) + '_cdf.jpeg')
+            temp_fig.clf()
+
     def save_samples(self):
-        file_name = 'saved_samples/' + str(dt.now())[:-7].replace(' ', '_') + '.csv'
-        file_name = file_name.replace(':', '-')
-        np.savetxt(file_name, self.samples)
+        self.frm_input = tk.CTkToplevel()
+        self.frm_input.title('input file name')
+        self.ent_input = tk.CTkEntry(self.frm_input, width=300)
+        self.ent_input.pack(ipadx=10, ipady=10, padx=10, pady=10)
+        tk.CTkButton(self.frm_input, text='OK',
+                     font=font_arg, command=self.set_folder_name).pack(padx=padx_btn, pady=pady_btn)
+        self.frm_input.resizable(width=False, height=False)
+        self.frm_input.attributes("-topmost", True)
+        self.frm_input.mainloop()
 
     def show_statistics(self):
         frm = tk.CTkToplevel()

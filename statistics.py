@@ -35,4 +35,4 @@ def calculate_statistic(sample: NDArray, n, N, bins):
     df['KL'] = calculate_entropy(sample, bins, n, N)
     df = df[['KL', 'statistic', 'cr_value', 'pvalue', 'cr_pv']]
     df.columns = ['KL', 'DN', 'кр DN', 'p-value', 'кр p-value']
-    return df
+    return df.round(3)

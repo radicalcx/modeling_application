@@ -111,8 +111,8 @@ def modeling(inter: List[Interaction], init_val, lam, time, n, m, N, M):
         samples[i] = create_trajectory(inter, init_val, lam, time, m).track[-1]
 
     mean = calculate_expected_value(inter, init_val, lam, time, n, m)
-    samples -= mean[-1]
-    std = np.sqrt((samples ** 2).sum(axis=0) / N) + 1e-8
-    samples = samples / std
+    samples_norm = samples - mean[-1]
+    std = np.sqrt((samples_norm ** 2).sum(axis=0) / N) + 1e-8
+    samples_norm = samples_norm / std
 
-    return mean, samples, trajectories_draw
+    return mean, samples_norm, trajectories_draw, samples
